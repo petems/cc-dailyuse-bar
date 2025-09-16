@@ -17,7 +17,6 @@ func TestConfig_Defaults(t *testing.T) {
 
 	assert.Equal(t, "ccusage", config.CCUsagePath)
 	assert.Equal(t, 30, config.UpdateInterval)
-	assert.Equal(t, "Claude: {{.Count}} ({{.Status}})", config.DisplayFormat)
 	assert.Equal(t, 10.0, config.YellowThreshold)
 	assert.Equal(t, 20.0, config.RedThreshold)
 	assert.Equal(t, "INFO", config.DebugLevel)
@@ -28,7 +27,6 @@ func TestConfigService_Validate_ValidConfig(t *testing.T) {
 	config := &models.Config{
 		CCUsagePath:     "/usr/local/bin/ccusage",
 		UpdateInterval:  60,
-		DisplayFormat:   "Usage: {{.Count}}",
 		YellowThreshold: 8.0,
 		RedThreshold:    15.0,
 		DebugLevel:      "INFO",
@@ -97,7 +95,6 @@ func TestConfigService_Validate_EmptyFields(t *testing.T) {
 		modifier func(*models.Config)
 	}{
 		{name: "empty ccusage path", modifier: func(c *models.Config) { c.CCUsagePath = "" }},
-		{name: "empty display format", modifier: func(c *models.Config) { c.DisplayFormat = "" }},
 	}
 
 	for _, tc := range testCases {
@@ -137,36 +134,6 @@ func TestConfigService_Validate_ValidThresholds(t *testing.T) {
 	}
 }
 
-func TestConfigService_Validate_DisplayFormatValidation(t *testing.T) {
-	service := services.NewConfigService()
-
-	testCases := []struct {
-		name   string
-		format string
-		valid  bool
-	}{
-		{"valid template", "{{.Count}}: ${{.Cost}}", true},
-		{"simple text", "Claude Usage", true},
-		{"all fields", "{{.Count}} {{.Cost}} {{.Status}} {{.Date}} {{.Time}}", true},
-		{"invalid template", "{{.InvalidField}}", true}, // Template validation is lenient
-		{"empty format", "", false},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			config := models.ConfigDefaults()
-			config.DisplayFormat = tc.format
-
-			err := service.Validate(config)
-			if tc.valid {
-				assert.NoError(t, err)
-			} else {
-				assert.Error(t, err)
-			}
-		})
-	}
-}
-
 func TestConfig_RoundTripValidation(t *testing.T) {
 	// Test that a valid config remains valid after serialization
 	service := services.NewConfigService()
@@ -190,7 +157,6 @@ func TestConfig_RoundTripValidation(t *testing.T) {
 	// Values should match
 	assert.Equal(t, original.CCUsagePath, loaded.CCUsagePath)
 	assert.Equal(t, original.UpdateInterval, loaded.UpdateInterval)
-	assert.Equal(t, original.DisplayFormat, loaded.DisplayFormat)
 	assert.Equal(t, original.YellowThreshold, loaded.YellowThreshold)
 	assert.Equal(t, original.RedThreshold, loaded.RedThreshold)
 }

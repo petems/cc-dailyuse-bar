@@ -55,7 +55,6 @@ The application uses XDG-compliant configuration storage:
 ```yaml
 ccusage_path: "ccusage"
 update_interval: 30
-display_format: "Claude: {{.Count}} ({{.Status}})"
 yellow_threshold: 10.00
 red_threshold: 20.00
 debug_level: "INFO"
@@ -65,7 +64,6 @@ debug_level: "INFO"
 
 - `ccusage_path`: Path to the ccusage binary (default: "ccusage")
 - `update_interval`: Polling interval in seconds (10-300, default: 30)
-- `display_format`: Template for display format (default: "Claude: {{.Count}} ({{.Status}})")
 - `yellow_threshold`: Cost threshold for yellow warning (default: $10.00)
 - `red_threshold`: Cost threshold for red alert (default: $20.00)
 - `debug_level`: Logging level - DEBUG, INFO, WARN, ERROR, or FATAL (default: "INFO")

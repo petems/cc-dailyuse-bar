@@ -1,6 +1,9 @@
 package integration
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -101,7 +104,6 @@ func TestResetPreservesConfiguration(t *testing.T) {
 	// Assert - Configuration should be unchanged
 	assert.Equal(t, originalConfig.CCUsagePath, configAfterReset.CCUsagePath)
 	assert.Equal(t, originalConfig.UpdateInterval, configAfterReset.UpdateInterval)
-	assert.Equal(t, originalConfig.DisplayFormat, configAfterReset.DisplayFormat)
 	assert.Equal(t, originalConfig.YellowThreshold, configAfterReset.YellowThreshold)
 	assert.Equal(t, originalConfig.RedThreshold, configAfterReset.RedThreshold)
 	assert.Equal(t, originalConfig.DebugLevel, configAfterReset.DebugLevel)
@@ -152,6 +154,24 @@ func TestResetWithThresholds(t *testing.T) {
 	configService := &services.ConfigService{}
 	usageService := services.NewUsageService()
 
+	// Create mock ccusage script that returns zero usage
+	tempDir := t.TempDir()
+	mockScript := filepath.Join(tempDir, "mock-ccusage")
+
+	today := time.Now().Format("2006-01-02")
+	zeroUsageJSON := fmt.Sprintf(`{
+		"daily": [{"date": "%s", "totalTokens": 0, "totalCost": 0.0}],
+		"totals": {"totalTokens": 0, "totalCost": 0.0}
+	}`, today)
+
+	scriptContent := fmt.Sprintf("#!/bin/bash\necho '%s'\n", zeroUsageJSON)
+	err := os.WriteFile(mockScript, []byte(scriptContent), 0755)
+	require.NoError(t, err)
+
+	// Configure usage service to use mock script
+	err = usageService.SetCCUsagePath(mockScript)
+	require.NoError(t, err)
+
 	// Load config to get thresholds
 	config, err := configService.Load()
 	if err != nil {
@@ -164,7 +184,7 @@ func TestResetWithThresholds(t *testing.T) {
 		t.Skipf("Cannot reset usage: %v", err)
 	}
 
-	// Get usage after reset
+	// Get usage after reset (should get 0 from mock)
 	usage, err := usageService.GetDailyUsage()
 	if err != nil {
 		t.Skipf("Cannot get usage after reset: %v", err)

@@ -59,7 +59,6 @@ func TestApplicationStartup(t *testing.T) {
 	// Assert - Configuration should contain expected defaults
 	assert.Equal(t, "ccusage", config.CCUsagePath)
 	assert.Equal(t, 30, config.UpdateInterval)
-	assert.Contains(t, config.DisplayFormat, "{{.Count}}")
 	assert.Equal(t, 10.0, config.YellowThreshold)
 	assert.Equal(t, 20.0, config.RedThreshold)
 	assert.Equal(t, "INFO", config.DebugLevel)

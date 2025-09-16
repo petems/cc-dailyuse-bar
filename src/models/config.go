@@ -3,13 +3,11 @@ package models
 import (
 	"errors"
 	"strings"
-	"text/template"
 )
 
 // Config represents the application configuration structure
 type Config struct {
 	CCUsagePath     string  `yaml:"ccusage_path"`
-	DisplayFormat   string  `yaml:"display_format"`
 	UpdateInterval  int     `yaml:"update_interval"`
 	YellowThreshold float64 `yaml:"yellow_threshold"`
 	RedThreshold    float64 `yaml:"red_threshold"`
@@ -21,7 +19,6 @@ func ConfigDefaults() *Config {
 	return &Config{
 		CCUsagePath:     "ccusage",
 		UpdateInterval:  30,
-		DisplayFormat:   "Claude: {{.Count}} ({{.Status}})",
 		YellowThreshold: 10.00,
 		RedThreshold:    20.00,
 		DebugLevel:      "INFO",
@@ -34,9 +31,6 @@ func (c *Config) Validate() error {
 	// Validate required fields
 	if c.CCUsagePath == "" {
 		return errors.New("ccusage_path cannot be empty")
-	}
-	if c.DisplayFormat == "" {
-		return errors.New("display_format cannot be empty")
 	}
 
 	// Validate update interval
@@ -53,12 +47,6 @@ func (c *Config) Validate() error {
 	}
 	if c.RedThreshold <= c.YellowThreshold {
 		return errors.New("red_threshold must be greater than yellow_threshold")
-	}
-
-	// Validate display format template
-	_, err := template.New("display").Parse(c.DisplayFormat)
-	if err != nil {
-		return errors.New("display_format contains invalid template syntax: " + err.Error())
 	}
 
 	// Validate debug level

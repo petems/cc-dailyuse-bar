@@ -38,7 +38,6 @@ func TestConfigurationPersistence(t *testing.T) {
 	customConfig := &models.Config{
 		CCUsagePath:     "/custom/path/ccusage",
 		UpdateInterval:  60,
-		DisplayFormat:   "Custom: {{.Count}} uses ({{.Cost}})",
 		YellowThreshold: 7.5,
 		RedThreshold:    15.0,
 		DebugLevel:      "DEBUG",
@@ -54,7 +53,6 @@ func TestConfigurationPersistence(t *testing.T) {
 	// Assert - All fields should match
 	assert.Equal(t, customConfig.CCUsagePath, loadedConfig.CCUsagePath)
 	assert.Equal(t, customConfig.UpdateInterval, loadedConfig.UpdateInterval)
-	assert.Equal(t, customConfig.DisplayFormat, loadedConfig.DisplayFormat)
 	assert.Equal(t, customConfig.YellowThreshold, loadedConfig.YellowThreshold)
 	assert.Equal(t, customConfig.RedThreshold, loadedConfig.RedThreshold)
 	assert.Equal(t, customConfig.DebugLevel, loadedConfig.DebugLevel)
@@ -86,7 +84,6 @@ func TestConfigurationYAMLFormat(t *testing.T) {
 	config := &models.Config{
 		CCUsagePath:     "ccusage",
 		UpdateInterval:  45,
-		DisplayFormat:   "Claude: {{.Count}}",
 		YellowThreshold: 6.0,
 		RedThreshold:    12.0,
 		DebugLevel:      "INFO",
@@ -103,7 +100,6 @@ func TestConfigurationYAMLFormat(t *testing.T) {
 	yamlContent := string(content)
 	assert.Contains(t, yamlContent, "ccusage_path: ccusage")
 	assert.Contains(t, yamlContent, "update_interval: 45")
-	assert.Contains(t, yamlContent, "display_format: 'Claude: {{.Count}}'")
 	assert.Contains(t, yamlContent, "yellow_threshold: 6")
 	assert.Contains(t, yamlContent, "red_threshold: 12")
 	assert.Contains(t, yamlContent, "debug_level: INFO")
@@ -123,7 +119,6 @@ func TestConfigurationValidation(t *testing.T) {
 			config: &models.Config{
 				CCUsagePath:     "ccusage",
 				UpdateInterval:  30,
-				DisplayFormat:   "Claude: {{.Count}}",
 				YellowThreshold: 5.0,
 				RedThreshold:    10.0,
 				DebugLevel:      "INFO",
@@ -170,7 +165,7 @@ func TestConfigurationValidation(t *testing.T) {
 			name: "Invalid template syntax",
 			config: &models.Config{
 				UpdateInterval:  30,
-				DisplayFormat:   "{{.Count", // Missing closing brace
+				CCUsagePath:     "", // Empty path to trigger validation error
 				YellowThreshold: 5.0,
 				RedThreshold:    10.0,
 			},
@@ -221,7 +216,6 @@ func TestConfigurationDefaults(t *testing.T) {
 	// Note: Load() returns defaults when no config file exists, or saved config if it exists
 	assert.NotEmpty(t, config.CCUsagePath)
 	assert.Greater(t, config.UpdateInterval, 0)
-	assert.Contains(t, config.DisplayFormat, "{{.Count}}")
 	assert.Greater(t, config.YellowThreshold, 0.0)
 	assert.Greater(t, config.RedThreshold, config.YellowThreshold)
 	assert.NotEmpty(t, config.DebugLevel)

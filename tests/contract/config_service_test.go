@@ -24,7 +24,6 @@ func TestConfigService_Load(t *testing.T) {
 	// The actual values depend on whether a config file was previously saved
 	assert.NotEmpty(t, config.CCUsagePath)
 	assert.Greater(t, config.UpdateInterval, 0)
-	assert.NotEmpty(t, config.DisplayFormat)
 	assert.Greater(t, config.YellowThreshold, 0.0)
 	assert.Greater(t, config.RedThreshold, config.YellowThreshold)
 	assert.NotEmpty(t, config.DebugLevel)
@@ -36,7 +35,6 @@ func TestConfigService_Save(t *testing.T) {
 	config := &models.Config{
 		CCUsagePath:     "/custom/ccusage",
 		UpdateInterval:  60,
-		DisplayFormat:   "Usage: {{.Count}}",
 		YellowThreshold: 8.0,
 		RedThreshold:    15.0,
 		DebugLevel:      "DEBUG",
@@ -53,7 +51,6 @@ func TestConfigService_Save(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, config.CCUsagePath, loadedConfig.CCUsagePath)
 	assert.Equal(t, config.UpdateInterval, loadedConfig.UpdateInterval)
-	assert.Equal(t, config.DisplayFormat, loadedConfig.DisplayFormat)
 	assert.Equal(t, config.YellowThreshold, loadedConfig.YellowThreshold)
 	assert.Equal(t, config.RedThreshold, loadedConfig.RedThreshold)
 	assert.Equal(t, config.DebugLevel, loadedConfig.DebugLevel)
@@ -65,7 +62,6 @@ func TestConfigService_Validate_Valid(t *testing.T) {
 	config := &models.Config{
 		CCUsagePath:     "ccusage",
 		UpdateInterval:  30,
-		DisplayFormat:   "Claude: {{.Count}}",
 		YellowThreshold: 5.0,
 		RedThreshold:    10.0,
 		DebugLevel:      "INFO",

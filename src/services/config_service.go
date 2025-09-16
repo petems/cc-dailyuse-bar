@@ -88,8 +88,8 @@ func (cs *ConfigService) Save(config *models.Config) error {
 		return err
 	}
 
-    // Write file with user-only permissions for privacy
-    return os.WriteFile(configPath, data, 0600)
+	// Write file with user-only permissions for privacy
+	return os.WriteFile(configPath, data, 0600)
 }
 
 // Validate checks configuration values for correctness

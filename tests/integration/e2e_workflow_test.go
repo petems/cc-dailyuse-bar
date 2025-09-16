@@ -71,7 +71,6 @@ func TestCompleteUserWorkflow(t *testing.T) {
 
 		// Modify configuration (simulate user changes)
 		config.UpdateInterval = 60
-		config.DisplayFormat = "Custom: {{.Count}} uses (${{.Cost}})"
 		config.YellowThreshold = 10.0
 		config.RedThreshold = 20.0
 
@@ -87,7 +86,6 @@ func TestCompleteUserWorkflow(t *testing.T) {
 		reloadedConfig, err := configService.Load()
 		require.NoError(t, err)
 		assert.Equal(t, 60, reloadedConfig.UpdateInterval)
-		assert.Equal(t, "Custom: {{.Count}} uses (${{.Cost}})", reloadedConfig.DisplayFormat)
 		assert.Equal(t, 10.0, reloadedConfig.YellowThreshold)
 		assert.Equal(t, 20.0, reloadedConfig.RedThreshold)
 	})
@@ -164,7 +162,6 @@ func TestCompleteUserWorkflow(t *testing.T) {
 
 		// Configuration should still exist
 		assert.Equal(t, 60, config.UpdateInterval) // From customization step
-		assert.Equal(t, "Custom: {{.Count}} uses (${{.Cost}})", config.DisplayFormat)
 	})
 }
 

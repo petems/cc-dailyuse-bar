@@ -23,7 +23,7 @@ func TestNewUsageService(t *testing.T) {
 	assert.NotNil(t, service.logger)
 	// Logger component is not exported, so we can't test it directly
 	assert.Equal(t, 10*time.Second, service.cacheWindow)
-	assert.NotNil(t, service.stopChan)
+	assert.NotNil(t, service.pollStopChan)
 }
 
 func TestUsageService_IsAvailable(t *testing.T) {
@@ -241,30 +241,30 @@ func TestUsageService_StopPolling(t *testing.T) {
 
 func TestUsageService_StartDailyResetMonitor(t *testing.T) {
 	service := NewUsageService()
-	
+
 	// Ensure clean state
 	service.StopPolling()
-	
+
 	// Set some data
 	service.state.DailyCount = 100
 	service.state.DailyCost = 25.0
-	
+
 	// Start daily reset monitor
 	service.StartDailyResetMonitor()
-	
+
 	// Wait a bit
 	time.Sleep(100 * time.Millisecond)
-	
+
 	// Stop the service gracefully
 	service.StopPolling()
 }
 
 func TestUsageService_UpdateWithRetry_NotAvailable(t *testing.T) {
 	service := NewUsageService()
-	
+
 	// Ensure clean state
 	service.StopPolling()
-	
+
 	service.ccusagePath = "/non/existent/path"
 
 	state, err := service.updateWithRetry(3)

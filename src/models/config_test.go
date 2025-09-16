@@ -11,7 +11,6 @@ func TestConfigDefaults(t *testing.T) {
 
 	assert.Equal(t, "ccusage", config.CCUsagePath)
 	assert.Equal(t, 30, config.UpdateInterval)
-	assert.Equal(t, "Claude: {{.Count}} ({{.Status}})", config.DisplayFormat)
 	assert.Equal(t, 10.0, config.YellowThreshold)
 	assert.Equal(t, 20.0, config.RedThreshold)
 	assert.Equal(t, "INFO", config.DebugLevel)
@@ -21,7 +20,6 @@ func TestConfig_Validate_ValidConfig(t *testing.T) {
 	config := &Config{
 		CCUsagePath:     "/usr/local/bin/ccusage",
 		UpdateInterval:  60,
-		DisplayFormat:   "Usage: {{.Count}}",
 		YellowThreshold: 8.0,
 		RedThreshold:    15.0,
 		DebugLevel:      "INFO",
@@ -42,24 +40,11 @@ func TestConfig_Validate_EmptyFields(t *testing.T) {
 			config: &Config{
 				CCUsagePath:     "",
 				UpdateInterval:  30,
-				DisplayFormat:   "Test",
 				YellowThreshold: 5.0,
 				RedThreshold:    10.0,
 				DebugLevel:      "INFO",
 			},
 			expected: "ccusage_path cannot be empty",
-		},
-		{
-			name: "empty display format",
-			config: &Config{
-				CCUsagePath:     "ccusage",
-				UpdateInterval:  30,
-				DisplayFormat:   "",
-				YellowThreshold: 5.0,
-				RedThreshold:    10.0,
-				DebugLevel:      "INFO",
-			},
-			expected: "display_format cannot be empty",
 		},
 	}
 
@@ -68,37 +53,6 @@ func TestConfig_Validate_EmptyFields(t *testing.T) {
 			err := tt.config.Validate()
 			assert.Error(t, err)
 			assert.Contains(t, err.Error(), tt.expected)
-		})
-	}
-}
-
-func TestConfig_Validate_UpdateInterval(t *testing.T) {
-	tests := []struct {
-		name     string
-		interval int
-		valid    bool
-	}{
-		{"valid minimum", 10, true},
-		{"valid maximum", 300, true},
-		{"valid middle", 60, true},
-		{"too low", 9, false},
-		{"too high", 301, false},
-		{"zero", 0, false},
-		{"negative", -10, false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			config := ConfigDefaults()
-			config.UpdateInterval = tt.interval
-
-			err := config.Validate()
-			if tt.valid {
-				assert.NoError(t, err)
-			} else {
-				assert.Error(t, err)
-				assert.Contains(t, err.Error(), "update_interval")
-			}
 		})
 	}
 }
@@ -138,36 +92,32 @@ func TestConfig_Validate_Thresholds(t *testing.T) {
 	}
 }
 
-func TestConfig_Validate_DisplayFormat(t *testing.T) {
+func TestConfig_Validate_UpdateInterval(t *testing.T) {
 	tests := []struct {
-		name   string
-		format string
-		valid  bool
+		name     string
+		interval int
+		valid    bool
 	}{
-		{"valid template", "{{.Count}}: ${{.Cost}}", true},
-		{"simple text", "Claude Usage", true},
-		{"all fields", "{{.Count}} {{.Cost}} {{.Status}} {{.Date}} {{.Time}}", true},
-		{"invalid template", "{{.Count", false},
-		{"invalid action", "{{invalid}}", false},
-		{"unclosed action", "{{.Count", false},
-		{"empty format", "", false},
+		{"valid interval 30", 30, true},
+		{"minimum valid 10", 10, true},
+		{"maximum valid 300", 300, true},
+		{"too low 9", 9, false},
+		{"too high 301", 301, false},
+		{"zero", 0, false},
+		{"negative", -5, false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			config := ConfigDefaults()
-			config.DisplayFormat = tt.format
+			config.UpdateInterval = tt.interval
 
 			err := config.Validate()
 			if tt.valid {
 				assert.NoError(t, err)
 			} else {
 				assert.Error(t, err)
-				if tt.format == "" {
-					assert.Contains(t, err.Error(), "display_format cannot be empty")
-				} else {
-					assert.Contains(t, err.Error(), "display_format contains invalid template syntax")
-				}
+				assert.Contains(t, err.Error(), "update_interval must be between 10 and 300 seconds")
 			}
 		})
 	}
@@ -240,7 +190,6 @@ func TestConfig_Validate_MultipleErrors(t *testing.T) {
 	config := &Config{
 		CCUsagePath:     "",        // First error
 		UpdateInterval:  5,         // Second error
-		DisplayFormat:   "",        // Third error
 		YellowThreshold: -1,        // Fourth error
 		RedThreshold:    -1,        // Fifth error
 		DebugLevel:      "INVALID", // Sixth error
@@ -256,8 +205,7 @@ func TestConfig_Validate_EdgeCases(t *testing.T) {
 	// Test boundary values
 	config := &Config{
 		CCUsagePath:     "ccusage",
-		UpdateInterval:  10, // Minimum valid
-		DisplayFormat:   "Test",
+		UpdateInterval:  10,   // Minimum valid
 		YellowThreshold: 0.0,  // Minimum valid (zero)
 		RedThreshold:    0.01, // Just above yellow
 		DebugLevel:      "INFO",
@@ -292,7 +240,6 @@ func TestConfig_Validate_RealWorldScenarios(t *testing.T) {
 			config: &Config{
 				CCUsagePath:     "/usr/local/bin/ccusage",
 				UpdateInterval:  10,
-				DisplayFormat:   "CC: {{.Count}} calls, ${{.Cost}}",
 				YellowThreshold: 5.0,
 				RedThreshold:    10.0,
 				DebugLevel:      "WARN",
@@ -304,7 +251,6 @@ func TestConfig_Validate_RealWorldScenarios(t *testing.T) {
 			config: &Config{
 				CCUsagePath:     "ccusage",
 				UpdateInterval:  300,
-				DisplayFormat:   "{{.Status}}: {{.Count}}",
 				YellowThreshold: 50.0,
 				RedThreshold:    100.0,
 				DebugLevel:      "ERROR",
@@ -316,7 +262,6 @@ func TestConfig_Validate_RealWorldScenarios(t *testing.T) {
 			config: &Config{
 				CCUsagePath:     "/path with spaces/ccusage",
 				UpdateInterval:  60,
-				DisplayFormat:   "Usage: {{.Count}}",
 				YellowThreshold: 1.0,
 				RedThreshold:    2.0,
 				DebugLevel:      "DEBUG",

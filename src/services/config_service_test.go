@@ -46,7 +46,6 @@ func TestConfigService_Load_NoFile(t *testing.T) {
 	defaults := models.ConfigDefaults()
 	assert.Equal(t, defaults.CCUsagePath, config.CCUsagePath)
 	assert.Equal(t, defaults.UpdateInterval, config.UpdateInterval)
-	assert.Equal(t, defaults.DisplayFormat, config.DisplayFormat)
 	assert.Equal(t, defaults.YellowThreshold, config.YellowThreshold)
 	assert.Equal(t, defaults.RedThreshold, config.RedThreshold)
 	assert.Equal(t, defaults.DebugLevel, config.DebugLevel)
@@ -67,7 +66,6 @@ func TestConfigService_Load_ExistingFile(t *testing.T) {
 	customConfig := &models.Config{
 		CCUsagePath:     "/custom/ccusage",
 		UpdateInterval:  60,
-		DisplayFormat:   "Custom: {{.Count}}",
 		YellowThreshold: 5.0,
 		RedThreshold:    10.0,
 		DebugLevel:      "DEBUG",
@@ -84,7 +82,6 @@ func TestConfigService_Load_ExistingFile(t *testing.T) {
 	// Should match the saved config
 	assert.Equal(t, customConfig.CCUsagePath, loadedConfig.CCUsagePath)
 	assert.Equal(t, customConfig.UpdateInterval, loadedConfig.UpdateInterval)
-	assert.Equal(t, customConfig.DisplayFormat, loadedConfig.DisplayFormat)
 	assert.Equal(t, customConfig.YellowThreshold, loadedConfig.YellowThreshold)
 	assert.Equal(t, customConfig.RedThreshold, loadedConfig.RedThreshold)
 	assert.Equal(t, customConfig.DebugLevel, loadedConfig.DebugLevel)
@@ -163,7 +160,6 @@ func TestConfigService_Save_ValidConfig(t *testing.T) {
 	config := &models.Config{
 		CCUsagePath:     "/usr/local/bin/ccusage",
 		UpdateInterval:  60,
-		DisplayFormat:   "Usage: {{.Count}}",
 		YellowThreshold: 8.0,
 		RedThreshold:    15.0,
 		DebugLevel:      "DEBUG",
@@ -182,7 +178,6 @@ func TestConfigService_Save_ValidConfig(t *testing.T) {
 
 	assert.Contains(t, string(content), "ccusage_path: /usr/local/bin/ccusage")
 	assert.Contains(t, string(content), "update_interval: 60")
-	assert.Contains(t, string(content), "display_format: 'Usage: {{.Count}}'")
 	assert.Contains(t, string(content), "yellow_threshold: 8")
 	assert.Contains(t, string(content), "red_threshold: 15")
 	assert.Contains(t, string(content), "debug_level: DEBUG")
@@ -199,7 +194,6 @@ func TestConfigService_Save_InvalidConfig(t *testing.T) {
 	config := &models.Config{
 		CCUsagePath:     "ccusage",
 		UpdateInterval:  -10, // Invalid
-		DisplayFormat:   "Test",
 		YellowThreshold: 5.0,
 		RedThreshold:    10.0,
 		DebugLevel:      "INFO",
@@ -254,7 +248,6 @@ func TestConfigService_Validate(t *testing.T) {
 			config: &models.Config{
 				CCUsagePath:     "ccusage",
 				UpdateInterval:  -10,
-				DisplayFormat:   "Test",
 				YellowThreshold: 5.0,
 				RedThreshold:    10.0,
 				DebugLevel:      "INFO",
@@ -266,7 +259,6 @@ func TestConfigService_Validate(t *testing.T) {
 			config: &models.Config{
 				CCUsagePath:     "ccusage",
 				UpdateInterval:  30,
-				DisplayFormat:   "Test",
 				YellowThreshold: 10.0,
 				RedThreshold:    5.0, // Red lower than yellow
 				DebugLevel:      "INFO",
@@ -302,7 +294,6 @@ func TestConfigService_RoundTrip(t *testing.T) {
 		{
 			CCUsagePath:     "/custom/ccusage",
 			UpdateInterval:  60,
-			DisplayFormat:   "Custom: {{.Count}}",
 			YellowThreshold: 5.0,
 			RedThreshold:    10.0,
 			DebugLevel:      "DEBUG",
@@ -310,7 +301,6 @@ func TestConfigService_RoundTrip(t *testing.T) {
 		{
 			CCUsagePath:     "ccusage",
 			UpdateInterval:  10,
-			DisplayFormat:   "Simple",
 			YellowThreshold: 0.1,
 			RedThreshold:    0.2,
 			DebugLevel:      "WARN",
@@ -330,7 +320,6 @@ func TestConfigService_RoundTrip(t *testing.T) {
 			// Verify all fields match
 			assert.Equal(t, originalConfig.CCUsagePath, loadedConfig.CCUsagePath)
 			assert.Equal(t, originalConfig.UpdateInterval, loadedConfig.UpdateInterval)
-			assert.Equal(t, originalConfig.DisplayFormat, loadedConfig.DisplayFormat)
 			assert.Equal(t, originalConfig.YellowThreshold, loadedConfig.YellowThreshold)
 			assert.Equal(t, originalConfig.RedThreshold, loadedConfig.RedThreshold)
 			assert.Equal(t, originalConfig.DebugLevel, loadedConfig.DebugLevel)
@@ -424,7 +413,6 @@ func TestConfigService_ConcurrentAccess(t *testing.T) {
 			config := &models.Config{
 				CCUsagePath:     "ccusage",
 				UpdateInterval:  30,
-				DisplayFormat:   "Test",
 				YellowThreshold: 5.0,
 				RedThreshold:    10.0,
 				DebugLevel:      "INFO",
