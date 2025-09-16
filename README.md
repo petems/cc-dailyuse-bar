@@ -1,5 +1,7 @@
 # cc-dailyuse-bar
 
+![Screenshot](docs/screenshot.png)
+
 A system tray application that monitors your daily Claude Code usage and displays real-time cost information in your menu bar.
 
 ## Features
@@ -11,7 +13,6 @@ A system tray application that monitors your daily Claude Code usage and display
 - **XDG compliance**: Stores configuration in standard XDG directories
 - **Multi-language support**: English and Japanese localization
 
-## Screenshots
 
 The application displays in your system tray as:
 - `CC 🟢 $0.45` - Normal usage (below yellow threshold)
