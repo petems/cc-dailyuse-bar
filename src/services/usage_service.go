@@ -1,12 +1,13 @@
 package services
 
 import (
-	"encoding/json"
-	"errors"
-	"os"
-	"os/exec"
-	"sync"
-	"time"
+    "encoding/json"
+    "errors"
+    "context"
+    "os"
+    "os/exec"
+    "sync"
+    "time"
 
 	"cc-dailyuse-bar/src/lib"
 	"cc-dailyuse-bar/src/models"
@@ -14,26 +15,30 @@ import (
 
 // UsageService implements Claude Code usage tracking via ccusage integration
 type UsageService struct {
-	lastQuery      time.Time
-	state          *models.UsageState
-	logger         *lib.Logger
-	ticker         *time.Ticker
-	stopChan       chan struct{}
-	updateCallback func(*models.UsageState)
-	ccusagePath    string
-	cacheWindow    time.Duration
-	mutex          sync.RWMutex // Protect ticker access
+    lastQuery      time.Time
+    state          *models.UsageState
+    logger         *lib.Logger
+    ticker         *time.Ticker
+    pollStopChan   chan struct{}
+    resetStopChan  chan struct{}
+    updateCallback func(*models.UsageState)
+    ccusagePath    string
+    cacheWindow    time.Duration
+    mutex          sync.RWMutex // Protect ticker access
+    cmdTimeout     time.Duration
 }
 
 // NewUsageService creates a new UsageService instance
 func NewUsageService() *UsageService {
-	return &UsageService{
-		ccusagePath: "ccusage",
-		state:       models.NewUsageState(),
-		cacheWindow: 10 * time.Second, // Cache ccusage results briefly
-		logger:      lib.NewLogger("usage-service"),
-		stopChan:    make(chan struct{}),
-	}
+    return &UsageService{
+        ccusagePath: "ccusage",
+        state:       models.NewUsageState(),
+        cacheWindow: 10 * time.Second, // Cache ccusage results briefly
+        logger:      lib.NewLogger("usage-service"),
+        pollStopChan:  make(chan struct{}),
+        resetStopChan: make(chan struct{}),
+        cmdTimeout:    5 * time.Second,
+    }
 }
 
 // CCUsageOutput represents the JSON structure returned by ccusage
@@ -69,41 +74,54 @@ func (us *UsageService) GetDailyUsage() (*models.UsageState, error) {
 // Used for immediate updates when user requests refresh
 // Returns error if ccusage command fails or data is invalid
 func (us *UsageService) UpdateUsage() (*models.UsageState, error) {
-	if !us.IsAvailable() {
-		us.state.IsAvailable = false
-		return us.state, errors.New("ccusage is not available")
-	}
+    if !us.IsAvailable() {
+        us.state.IsAvailable = false
+        return us.state, errors.New("ccusage is not available")
+    }
 
-	// Execute ccusage command
-	cmd := exec.Command(us.ccusagePath, "daily", "--json")
-	output, err := cmd.Output()
-	if err != nil {
-		us.logger.Warn("ccusage command failed", map[string]interface{}{
-			"error":  err.Error(),
-			"path":   us.ccusagePath,
-			"output": string(output),
-		})
-		us.state.IsAvailable = false
-		return us.state, err
-	}
+    // Execute ccusage command
+    ctx, cancel := context.WithTimeout(context.Background(), us.cmdTimeout)
+    defer cancel()
+    cmd := exec.CommandContext(ctx, us.ccusagePath, "daily", "--json")
+    output, err := cmd.Output()
+    if err != nil {
+        // Redact/limit output to avoid logging potentially sensitive full payloads
+        truncated := string(output)
+        if len(truncated) > 128 {
+            truncated = truncated[:128] + "..."
+        }
+        us.logger.Warn("ccusage command failed", map[string]interface{}{
+            "error":   err.Error(),
+            "path":    us.ccusagePath,
+            "out_len": len(output),
+            "output":  truncated,
+        })
+        us.state.IsAvailable = false
+        return us.state, err
+    }
 
-	us.logger.Debug("ccusage command successful", map[string]interface{}{
-		"output": string(output),
-	})
+    us.logger.Debug("ccusage command successful", map[string]interface{}{
+        "out_len": len(output),
+    })
 
 	// Parse JSON output - expect the full response structure
 	var ccusageResponse CCUsageResponse
-	if err := json.Unmarshal(output, &ccusageResponse); err != nil {
-		// Log the error and raw output for debugging
-		us.logger.Warn("Failed to parse ccusage JSON", map[string]interface{}{
-			"error":  err.Error(),
-			"output": string(output),
-		})
-		// If ccusage doesn't support JSON or returns invalid data,
-		// try to simulate data for development/testing
-		us.simulateUsageData()
-		us.lastQuery = time.Now()
-		return us.state, nil
+    if err := json.Unmarshal(output, &ccusageResponse); err != nil {
+        // Log the error with output length instead of full output
+        truncated := string(output)
+        if len(truncated) > 128 {
+            truncated = truncated[:128] + "..."
+        }
+        us.logger.Warn("Failed to parse ccusage JSON", map[string]interface{}{
+            "error":   err.Error(),
+            "out_len": len(output),
+            "output":  truncated,
+        })
+        // If ccusage doesn't support JSON or returns invalid data,
+        // try to simulate data for development/testing
+        us.simulateUsageData()
+        us.lastQuery = time.Now()
+        return us.state, nil
 	}
 
 	// Find today's data in the daily array
@@ -244,7 +262,7 @@ func (us *UsageService) SetThresholds(yellowThreshold, redThreshold float64) {
 
 // T025: Connect to ccusage binary with retry logic
 func (us *UsageService) updateWithRetry(maxRetries int) (*models.UsageState, error) {
-	var lastError error
+    var lastError error
 
 	for attempt := 1; attempt <= maxRetries; attempt++ {
 		us.logger.Debug("Attempting ccusage query", map[string]interface{}{
@@ -268,15 +286,23 @@ func (us *UsageService) updateWithRetry(maxRetries int) (*models.UsageState, err
 			return us.state, lastError
 		}
 
-		// Execute ccusage command
-		cmd := exec.Command(us.ccusagePath, "daily", "--json")
-		output, err := cmd.Output()
-		if err != nil {
-			lastError = lib.WrapError(err, lib.ErrCodeCCUsage, "ccusage command failed")
-			us.logger.Warn("ccusage command failed", map[string]interface{}{
-				"attempt": attempt,
-				"error":   err.Error(),
-			})
+        // Execute ccusage command with timeout
+        ctx, cancel := context.WithTimeout(context.Background(), us.cmdTimeout)
+        defer cancel()
+        cmd := exec.CommandContext(ctx, us.ccusagePath, "daily", "--json")
+        output, err := cmd.Output()
+        if err != nil {
+            lastError = lib.WrapError(err, lib.ErrCodeCCUsage, "ccusage command failed")
+            truncated := string(output)
+            if len(truncated) > 128 {
+                truncated = truncated[:128] + "..."
+            }
+            us.logger.Warn("ccusage command failed", map[string]interface{}{
+                "attempt": attempt,
+                "error":   err.Error(),
+                "out_len": len(output),
+                "output":  truncated,
+            })
 
 			if attempt < maxRetries {
 				time.Sleep(time.Duration(attempt) * time.Second)
@@ -288,14 +314,19 @@ func (us *UsageService) updateWithRetry(maxRetries int) (*models.UsageState, err
 
 		// Parse JSON output - expect the full response structure
 		var ccusageResponse CCUsageResponse
-		if err := json.Unmarshal(output, &ccusageResponse); err != nil {
-			us.logger.Info("ccusage JSON parsing failed, using simulation", map[string]interface{}{
-				"error":  err.Error(),
-				"output": string(output),
-			})
-			us.simulateUsageData()
-			return us.state, nil
-		}
+        if err := json.Unmarshal(output, &ccusageResponse); err != nil {
+            truncated := string(output)
+            if len(truncated) > 128 {
+                truncated = truncated[:128] + "..."
+            }
+            us.logger.Info("ccusage JSON parsing failed, using simulation", map[string]interface{}{
+                "error":   err.Error(),
+                "out_len": len(output),
+                "output":  truncated,
+            })
+            us.simulateUsageData()
+            return us.state, nil
+        }
 
 		// Find today's data in the daily array
 		today := time.Now().Format("2006-01-02")
@@ -362,22 +393,25 @@ func (us *UsageService) StartPolling(intervalSeconds int, callback func(*models.
 
 // StopPolling stops the polling timer
 func (us *UsageService) StopPolling() {
-	// Send stop signal first
-	select {
-	case us.stopChan <- struct{}{}:
-	default:
-		// Channel might be full or closed, that's ok
-	}
+    // Send stop signals (non-blocking) to both loops
+    select {
+    case us.pollStopChan <- struct{}{}:
+    default:
+    }
+    select {
+    case us.resetStopChan <- struct{}{}:
+    default:
+    }
 
-	// Then stop the ticker
-	us.mutex.Lock()
-	if us.ticker != nil {
-		us.ticker.Stop()
-		us.ticker = nil
-	}
-	us.mutex.Unlock()
+    // Then stop the ticker
+    us.mutex.Lock()
+    if us.ticker != nil {
+        us.ticker.Stop()
+        us.ticker = nil
+    }
+    us.mutex.Unlock()
 
-	us.logger.Info("Usage polling stopped")
+    us.logger.Info("Usage polling stopped")
 }
 
 // pollingLoop runs the polling loop in a goroutine
@@ -391,10 +425,10 @@ func (us *UsageService) pollingLoop() {
 	ticker := us.ticker
 	us.mutex.RUnlock()
 
-	for {
-		select {
-		case <-ticker.C:
-			us.logger.Debug("Polling timer triggered")
+    for {
+        select {
+        case <-ticker.C:
+            us.logger.Debug("Polling timer triggered")
 
 			// Use retry logic for polling updates
 			state, err := us.updateWithRetry(3) // 3 retries for polling
@@ -409,11 +443,11 @@ func (us *UsageService) pollingLoop() {
 				us.updateCallback(state)
 			}
 
-		case <-us.stopChan:
-			us.logger.Debug("Polling loop stopped")
-			return
-		}
-	}
+        case <-us.pollStopChan:
+            us.logger.Debug("Polling loop stopped")
+            return
+        }
+    }
 }
 
 // T031: Daily reset scheduler with midnight detection
@@ -424,13 +458,13 @@ func (us *UsageService) StartDailyResetMonitor() {
 
 // dailyResetLoop monitors for midnight and resets daily counters
 func (us *UsageService) dailyResetLoop() {
-	lastResetDay := time.Now().Day()
-	resetChecker := time.NewTicker(1 * time.Minute) // Check every minute
-	defer resetChecker.Stop()
+    lastResetDay := time.Now().Day()
+    resetChecker := time.NewTicker(1 * time.Minute) // Check every minute
+    defer resetChecker.Stop()
 
-	for {
-		select {
-		case <-resetChecker.C:
+    for {
+        select {
+        case <-resetChecker.C:
 			now := time.Now()
 			if now.Day() != lastResetDay {
 				us.logger.Info("Daily reset triggered", map[string]interface{}{
@@ -453,9 +487,9 @@ func (us *UsageService) dailyResetLoop() {
 				lastResetDay = now.Day()
 			}
 
-		case <-us.stopChan:
-			us.logger.Debug("Daily reset loop stopped")
-			return
-		}
-	}
+        case <-us.resetStopChan:
+            us.logger.Debug("Daily reset loop stopped")
+            return
+        }
+    }
 }

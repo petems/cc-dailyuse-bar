@@ -228,4 +228,9 @@ func showSettings() {
 	}()
 }
 
-func onExit() {}
+func onExit() {
+    // Ensure background goroutines stop cleanly
+    if usageService != nil {
+        usageService.StopPolling()
+    }
+}
