@@ -1,44 +1,48 @@
 package services
 
 import (
-    "encoding/json"
-    "errors"
-    "context"
-    "os"
-    "os/exec"
-    "sync"
-    "time"
+	"context"
+	"encoding/json"
+	"errors"
+	"os"
+	"os/exec"
+	"sync"
+	"time"
 
 	"cc-dailyuse-bar/src/lib"
 	"cc-dailyuse-bar/src/models"
 )
 
+const maxLoggedOutputLength = 128
+
+var errCCUsageUnavailable = errors.New("ccusage is not available")
+
 // UsageService implements Claude Code usage tracking via ccusage integration
 type UsageService struct {
-    lastQuery      time.Time
-    state          *models.UsageState
-    logger         *lib.Logger
-    ticker         *time.Ticker
-    pollStopChan   chan struct{}
-    resetStopChan  chan struct{}
-    updateCallback func(*models.UsageState)
-    ccusagePath    string
-    cacheWindow    time.Duration
-    mutex          sync.RWMutex // Protect ticker access
-    cmdTimeout     time.Duration
+	lastQuery      time.Time
+	state          *models.UsageState
+	logger         *lib.Logger
+	ticker         *time.Ticker
+	pollStopChan   chan struct{}
+	resetStopChan  chan struct{}
+	updateCallback func(*models.UsageState)
+	ccusagePath    string
+	cacheWindow    time.Duration
+	mutex          sync.RWMutex // Protect ticker access
+	cmdTimeout     time.Duration
 }
 
 // NewUsageService creates a new UsageService instance
 func NewUsageService() *UsageService {
-    return &UsageService{
-        ccusagePath: "ccusage",
-        state:       models.NewUsageState(),
-        cacheWindow: 10 * time.Second, // Cache ccusage results briefly
-        logger:      lib.NewLogger("usage-service"),
-        pollStopChan:  make(chan struct{}),
-        resetStopChan: make(chan struct{}),
-        cmdTimeout:    5 * time.Second,
-    }
+	return &UsageService{
+		ccusagePath:   "ccusage",
+		state:         models.NewUsageState(),
+		cacheWindow:   10 * time.Second, // Cache ccusage results briefly
+		logger:        lib.NewLogger("usage-service"),
+		pollStopChan:  make(chan struct{}),
+		resetStopChan: make(chan struct{}),
+		cmdTimeout:    5 * time.Second,
+	}
 }
 
 // CCUsageOutput represents the JSON structure returned by ccusage
@@ -61,12 +65,10 @@ type CCUsageResponse struct {
 // Returns cached data if last query was within cache window
 // Returns error if ccusage is unavailable or returns invalid data
 func (us *UsageService) GetDailyUsage() (*models.UsageState, error) {
-	// Return cached state if within cache window
 	if time.Since(us.lastQuery) < us.cacheWindow && us.state.IsAvailable {
 		return us.state, nil
 	}
 
-	// Update from ccusage
 	return us.UpdateUsage()
 }
 
@@ -74,119 +76,13 @@ func (us *UsageService) GetDailyUsage() (*models.UsageState, error) {
 // Used for immediate updates when user requests refresh
 // Returns error if ccusage command fails or data is invalid
 func (us *UsageService) UpdateUsage() (*models.UsageState, error) {
-    if !us.IsAvailable() {
-        us.state.IsAvailable = false
-        return us.state, errors.New("ccusage is not available")
-    }
-
-    // Execute ccusage command
-    ctx, cancel := context.WithTimeout(context.Background(), us.cmdTimeout)
-    defer cancel()
-    cmd := exec.CommandContext(ctx, us.ccusagePath, "daily", "--json")
-    output, err := cmd.Output()
-    if err != nil {
-        // Redact/limit output to avoid logging potentially sensitive full payloads
-        truncated := string(output)
-        if len(truncated) > 128 {
-            truncated = truncated[:128] + "..."
-        }
-        us.logger.Warn("ccusage command failed", map[string]interface{}{
-            "error":   err.Error(),
-            "path":    us.ccusagePath,
-            "out_len": len(output),
-            "output":  truncated,
-        })
-        us.state.IsAvailable = false
-        return us.state, err
-    }
-
-    us.logger.Debug("ccusage command successful", map[string]interface{}{
-        "out_len": len(output),
-    })
-
-	// Parse JSON output - expect the full response structure
-	var ccusageResponse CCUsageResponse
-    if err := json.Unmarshal(output, &ccusageResponse); err != nil {
-        // Log the error with output length instead of full output
-        truncated := string(output)
-        if len(truncated) > 128 {
-            truncated = truncated[:128] + "..."
-        }
-        us.logger.Warn("Failed to parse ccusage JSON", map[string]interface{}{
-            "error":   err.Error(),
-            "out_len": len(output),
-            "output":  truncated,
-        })
-        // If ccusage doesn't support JSON or returns invalid data,
-        // try to simulate data for development/testing
-        us.simulateUsageData()
-        us.lastQuery = time.Now()
-        return us.state, nil
-	}
-
-	// Find today's data in the daily array
-	today := time.Now().Format("2006-01-02")
-	var ccusageOutput CCUsageOutput
-	found := false
-
-	for _, daily := range ccusageResponse.Daily {
-		if daily.Date == today {
-			ccusageOutput = daily
-			found = true
-			break
-		}
-	}
-
-	if !found {
-		us.logger.Warn("No data found for today", map[string]interface{}{
-			"today": today,
-			"availableDates": func() []string {
-				dates := make([]string, len(ccusageResponse.Daily))
-				for i, d := range ccusageResponse.Daily {
-					dates[i] = d.Date
-				}
-				return dates
-			}(),
-		})
-		us.simulateUsageData()
-		us.lastQuery = time.Now()
-		return us.state, nil
-	}
-
-	// Check if we got meaningful data
-	if ccusageOutput.TotalCost == 0 && ccusageOutput.TotalTokens == 0 {
-		us.logger.Warn("ccusage returned zero values, falling back to simulation", map[string]interface{}{
-			"totalTokens": ccusageOutput.TotalTokens,
-			"totalCost":   ccusageOutput.TotalCost,
-			"date":        ccusageOutput.Date,
-		})
-		us.simulateUsageData()
-		us.lastQuery = time.Now()
-		return us.state, nil
-	}
-
-	// Update state from ccusage output
-	us.state.DailyCount = ccusageOutput.TotalTokens
-	us.state.DailyCost = ccusageOutput.TotalCost
-	us.state.LastUpdate = time.Now()
-	us.state.IsAvailable = true
-
-	us.logger.Info("Successfully parsed ccusage data", map[string]interface{}{
-		"totalTokens": ccusageOutput.TotalTokens,
-		"totalCost":   ccusageOutput.TotalCost,
-		"date":        ccusageOutput.Date,
-	})
-
-	us.lastQuery = time.Now()
-	return us.state, nil
+	return us.performUpdate(1)
 }
 
 // simulateUsageData provides simulated data when ccusage is unavailable
 // This helps with development and testing
 func (us *UsageService) simulateUsageData() {
 	now := time.Now()
-
-	// Simulate some usage based on time of day
 	hour := now.Hour()
 	simulatedCount := hour * 3                      // More usage later in day
 	simulatedCost := float64(simulatedCount) * 0.05 // $0.05 per request
@@ -195,6 +91,7 @@ func (us *UsageService) simulateUsageData() {
 	us.state.DailyCost = simulatedCost
 	us.state.LastUpdate = now
 	us.state.IsAvailable = true
+	us.lastQuery = now
 }
 
 // ResetDaily resets counters for a new day
@@ -214,24 +111,19 @@ func (us *UsageService) IsAvailable() bool {
 		return false
 	}
 
-	// Check if file exists and is executable
 	info, err := os.Stat(us.ccusagePath)
 	if err != nil {
-		// Try to find in PATH
 		if _, pathErr := exec.LookPath(us.ccusagePath); pathErr != nil {
 			return false
 		}
 		return true
 	}
 
-	// Check if it's a regular file and executable
 	if info.IsDir() {
 		return false
 	}
 
-	// Check basic execute permissions (simplified check)
-	mode := info.Mode()
-	return mode&0111 != 0
+	return info.Mode()&0o111 != 0
 }
 
 // SetCCUsagePath updates the path to ccusage binary
@@ -242,12 +134,10 @@ func (us *UsageService) SetCCUsagePath(path string) error {
 		return errors.New("ccusage path cannot be empty")
 	}
 
-	// Test the path
 	oldPath := us.ccusagePath
 	us.ccusagePath = path
 
 	if !us.IsAvailable() {
-		// Restore old path
 		us.ccusagePath = oldPath
 		return errors.New("ccusage path is not executable: " + path)
 	}
@@ -262,17 +152,27 @@ func (us *UsageService) SetThresholds(yellowThreshold, redThreshold float64) {
 
 // T025: Connect to ccusage binary with retry logic
 func (us *UsageService) updateWithRetry(maxRetries int) (*models.UsageState, error) {
-    var lastError error
+	return us.performUpdate(maxRetries)
+}
+
+func (us *UsageService) performUpdate(maxRetries int) (*models.UsageState, error) {
+	if maxRetries < 1 {
+		maxRetries = 1
+	}
+
+	var lastErr error
 
 	for attempt := 1; attempt <= maxRetries; attempt++ {
-		us.logger.Debug("Attempting ccusage query", map[string]interface{}{
-			"attempt":     attempt,
-			"maxRetries":  maxRetries,
-			"ccusagePath": us.ccusagePath,
-		})
+		if maxRetries > 1 {
+			us.logger.Debug("Attempting ccusage query", map[string]interface{}{
+				"attempt":     attempt,
+				"maxRetries":  maxRetries,
+				"ccusagePath": us.ccusagePath,
+			})
+		}
 
 		if !us.IsAvailable() {
-			lastError = lib.CCUsageError("ccusage binary not available")
+			lastErr = errCCUsageUnavailable
 			us.state.IsAvailable = false
 			us.logger.Warn("ccusage not available", map[string]interface{}{
 				"attempt": attempt,
@@ -280,94 +180,172 @@ func (us *UsageService) updateWithRetry(maxRetries int) (*models.UsageState, err
 			})
 
 			if attempt < maxRetries {
-				time.Sleep(time.Duration(attempt) * time.Second)
+				us.sleepForRetry(attempt)
 				continue
 			}
-			return us.state, lastError
+
+			if lastErr == nil {
+				lastErr = errCCUsageUnavailable
+			}
+			return us.state, lastErr
 		}
 
-        // Execute ccusage command with timeout
-        ctx, cancel := context.WithTimeout(context.Background(), us.cmdTimeout)
-        defer cancel()
-        cmd := exec.CommandContext(ctx, us.ccusagePath, "daily", "--json")
-        output, err := cmd.Output()
-        if err != nil {
-            lastError = lib.WrapError(err, lib.ErrCodeCCUsage, "ccusage command failed")
-            truncated := string(output)
-            if len(truncated) > 128 {
-                truncated = truncated[:128] + "..."
-            }
-            us.logger.Warn("ccusage command failed", map[string]interface{}{
-                "attempt": attempt,
-                "error":   err.Error(),
-                "out_len": len(output),
-                "output":  truncated,
-            })
+		output, err := us.executeCCUsage()
+		if err != nil {
+			wrapped := lib.WrapError(err, lib.ErrCodeCCUsage, "ccusage command failed")
+			if wrapped != nil {
+				lastErr = wrapped
+			} else {
+				lastErr = err
+			}
 
-			if attempt < maxRetries {
-				time.Sleep(time.Duration(attempt) * time.Second)
-				continue
+			extra := map[string]interface{}{}
+			if maxRetries > 1 {
+				extra["attempt"] = attempt
+				extra["maxRetries"] = maxRetries
 			}
 			us.state.IsAvailable = false
-			return us.state, lastError
-		}
+			us.logCommandFailure(err, output, extra)
 
-		// Parse JSON output - expect the full response structure
-		var ccusageResponse CCUsageResponse
-        if err := json.Unmarshal(output, &ccusageResponse); err != nil {
-            truncated := string(output)
-            if len(truncated) > 128 {
-                truncated = truncated[:128] + "..."
-            }
-            us.logger.Info("ccusage JSON parsing failed, using simulation", map[string]interface{}{
-                "error":   err.Error(),
-                "out_len": len(output),
-                "output":  truncated,
-            })
-            us.simulateUsageData()
-            return us.state, nil
-        }
-
-		// Find today's data in the daily array
-		today := time.Now().Format("2006-01-02")
-		var ccusageOutput CCUsageOutput
-		found := false
-
-		for _, daily := range ccusageResponse.Daily {
-			if daily.Date == today {
-				ccusageOutput = daily
-				found = true
-				break
+			if attempt < maxRetries {
+				us.sleepForRetry(attempt)
+				continue
 			}
+
+			if lastErr == nil {
+				lastErr = err
+			}
+			return us.state, lastErr
 		}
 
-		if !found {
-			us.logger.Warn("No data found for today in retry", map[string]interface{}{
-				"today": today,
+		response, err := parseCCUsageResponse(output)
+		if err != nil {
+			us.logger.Info("ccusage JSON parsing failed, using simulation", map[string]interface{}{
+				"error":   err.Error(),
+				"out_len": len(output),
+				"output":  truncateOutput(output),
 			})
 			us.simulateUsageData()
 			return us.state, nil
 		}
 
-		// Success - update state
-		us.state.DailyCount = ccusageOutput.TotalTokens
-		us.state.DailyCost = ccusageOutput.TotalCost
-		us.state.LastUpdate = time.Now()
-		us.state.IsAvailable = true
-		us.lastQuery = time.Now()
+		today := time.Now().Format("2006-01-02")
+		ccusageOutput, found := findTodayOutput(response, today)
+		if !found {
+			us.logger.Warn("No data found for today", map[string]interface{}{
+				"today":          today,
+				"availableDates": availableDates(response.Daily),
+			})
+			us.simulateUsageData()
+			return us.state, nil
+		}
 
-		us.logger.Info("ccusage query successful", map[string]interface{}{
-			"attempt":    attempt,
-			"dailyCount": ccusageOutput.TotalTokens,
-			"dailyCost":  ccusageOutput.TotalCost,
-		})
+		if ccusageOutput.TotalCost == 0 && ccusageOutput.TotalTokens == 0 {
+			us.logger.Warn("ccusage returned zero values, falling back to simulation", map[string]interface{}{
+				"totalTokens": ccusageOutput.TotalTokens,
+				"totalCost":   ccusageOutput.TotalCost,
+				"date":        ccusageOutput.Date,
+			})
+			us.simulateUsageData()
+			return us.state, nil
+		}
+
+		us.applyUsageData(ccusageOutput)
+
+		context := map[string]interface{}{
+			"totalTokens": ccusageOutput.TotalTokens,
+			"totalCost":   ccusageOutput.TotalCost,
+			"date":        ccusageOutput.Date,
+		}
+		if maxRetries > 1 {
+			context["attempt"] = attempt
+		}
+		us.logger.Info("Successfully parsed ccusage data", context)
 
 		return us.state, nil
 	}
 
-	// All retries failed
+	if lastErr == nil {
+		lastErr = errCCUsageUnavailable
+	}
 	us.state.IsAvailable = false
-	return us.state, lastError
+	return us.state, lastErr
+}
+
+func (us *UsageService) executeCCUsage() ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), us.cmdTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, us.ccusagePath, "daily", "--json")
+	output, err := cmd.Output()
+	if err != nil {
+		return output, err
+	}
+
+	us.logger.Debug("ccusage command successful", map[string]interface{}{
+		"out_len": len(output),
+	})
+
+	return output, nil
+}
+
+func parseCCUsageResponse(output []byte) (*CCUsageResponse, error) {
+	var response CCUsageResponse
+	if err := json.Unmarshal(output, &response); err != nil {
+		return nil, err
+	}
+	return &response, nil
+}
+
+func findTodayOutput(response *CCUsageResponse, today string) (CCUsageOutput, bool) {
+	for _, daily := range response.Daily {
+		if daily.Date == today {
+			return daily, true
+		}
+	}
+	return CCUsageOutput{}, false
+}
+
+func availableDates(daily []CCUsageOutput) []string {
+	dates := make([]string, len(daily))
+	for i, d := range daily {
+		dates[i] = d.Date
+	}
+	return dates
+}
+
+func (us *UsageService) applyUsageData(output CCUsageOutput) {
+	now := time.Now()
+	us.state.DailyCount = output.TotalTokens
+	us.state.DailyCost = output.TotalCost
+	us.state.LastUpdate = now
+	us.state.IsAvailable = true
+	us.lastQuery = now
+}
+
+func (us *UsageService) logCommandFailure(err error, output []byte, extra map[string]interface{}) {
+	context := map[string]interface{}{
+		"error":   err.Error(),
+		"out_len": len(output),
+		"output":  truncateOutput(output),
+		"path":    us.ccusagePath,
+	}
+	for k, v := range extra {
+		context[k] = v
+	}
+
+	us.logger.Warn("ccusage command failed", context)
+}
+
+func truncateOutput(output []byte) string {
+	if len(output) <= maxLoggedOutputLength {
+		return string(output)
+	}
+	return string(output[:maxLoggedOutputLength]) + "..."
+}
+
+func (us *UsageService) sleepForRetry(attempt int) {
+	time.Sleep(time.Duration(attempt) * time.Second)
 }
 
 // T030: Polling timer with configurable interval
@@ -376,7 +354,6 @@ func (us *UsageService) StartPolling(intervalSeconds int, callback func(*models.
 		return lib.ValidationError("polling interval must be positive")
 	}
 
-	// Stop existing polling if running
 	us.StopPolling()
 
 	us.updateCallback = callback
@@ -393,25 +370,23 @@ func (us *UsageService) StartPolling(intervalSeconds int, callback func(*models.
 
 // StopPolling stops the polling timer
 func (us *UsageService) StopPolling() {
-    // Send stop signals (non-blocking) to both loops
-    select {
-    case us.pollStopChan <- struct{}{}:
-    default:
-    }
-    select {
-    case us.resetStopChan <- struct{}{}:
-    default:
-    }
+	select {
+	case us.pollStopChan <- struct{}{}:
+	default:
+	}
+	select {
+	case us.resetStopChan <- struct{}{}:
+	default:
+	}
 
-    // Then stop the ticker
-    us.mutex.Lock()
-    if us.ticker != nil {
-        us.ticker.Stop()
-        us.ticker = nil
-    }
-    us.mutex.Unlock()
+	us.mutex.Lock()
+	if us.ticker != nil {
+		us.ticker.Stop()
+		us.ticker = nil
+	}
+	us.mutex.Unlock()
 
-    us.logger.Info("Usage polling stopped")
+	us.logger.Info("Usage polling stopped")
 }
 
 // pollingLoop runs the polling loop in a goroutine
@@ -425,12 +400,11 @@ func (us *UsageService) pollingLoop() {
 	ticker := us.ticker
 	us.mutex.RUnlock()
 
-    for {
-        select {
-        case <-ticker.C:
-            us.logger.Debug("Polling timer triggered")
+	for {
+		select {
+		case <-ticker.C:
+			us.logger.Debug("Polling timer triggered")
 
-			// Use retry logic for polling updates
 			state, err := us.updateWithRetry(3) // 3 retries for polling
 			if err != nil {
 				us.logger.Error("Polling update failed", map[string]interface{}{
@@ -438,16 +412,15 @@ func (us *UsageService) pollingLoop() {
 				})
 			}
 
-			// Call callback if set
 			if us.updateCallback != nil {
 				us.updateCallback(state)
 			}
 
-        case <-us.pollStopChan:
-            us.logger.Debug("Polling loop stopped")
-            return
-        }
-    }
+		case <-us.pollStopChan:
+			us.logger.Debug("Polling loop stopped")
+			return
+		}
+	}
 }
 
 // T031: Daily reset scheduler with midnight detection
@@ -458,13 +431,13 @@ func (us *UsageService) StartDailyResetMonitor() {
 
 // dailyResetLoop monitors for midnight and resets daily counters
 func (us *UsageService) dailyResetLoop() {
-    lastResetDay := time.Now().Day()
-    resetChecker := time.NewTicker(1 * time.Minute) // Check every minute
-    defer resetChecker.Stop()
+	lastResetDay := time.Now().Day()
+	resetChecker := time.NewTicker(1 * time.Minute)
+	defer resetChecker.Stop()
 
-    for {
-        select {
-        case <-resetChecker.C:
+	for {
+		select {
+		case <-resetChecker.C:
 			now := time.Now()
 			if now.Day() != lastResetDay {
 				us.logger.Info("Daily reset triggered", map[string]interface{}{
@@ -478,7 +451,6 @@ func (us *UsageService) dailyResetLoop() {
 					})
 				} else {
 					us.logger.Info("Daily usage reset successfully")
-					// Trigger immediate update after reset
 					if us.updateCallback != nil {
 						state, _ := us.GetDailyUsage()
 						us.updateCallback(state)
@@ -487,9 +459,9 @@ func (us *UsageService) dailyResetLoop() {
 				lastResetDay = now.Day()
 			}
 
-        case <-us.resetStopChan:
-            us.logger.Debug("Daily reset loop stopped")
-            return
-        }
-    }
+		case <-us.resetStopChan:
+			us.logger.Debug("Daily reset loop stopped")
+			return
+		}
+	}
 }
