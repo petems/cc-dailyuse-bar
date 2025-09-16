@@ -1,0 +1,19 @@
+[Unit]
+Description=CC Daily Use Bar - Claude Code Usage Monitor
+After=network.target
+
+[Service]
+Type=simple
+User=%i
+ExecStart=/usr/local/bin/cc-dailyuse-bar
+Restart=always
+RestartSec=10
+Environment=DISPLAY=:0
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=cc-dailyuse-bar
+
+[Install]
+WantedBy=default.target

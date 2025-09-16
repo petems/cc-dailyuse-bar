@@ -1,0 +1,34 @@
+version: "2"
+
+run:
+  timeout: 5m
+  modules-download-mode: readonly
+
+linters:
+  enable:
+    - govet
+    - revive
+    - ineffassign
+    - misspell
+    - unused
+    - staticcheck
+  settings:
+    govet:
+      enable-all: true
+    revive:
+      rules:
+        - name: exported
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    gofmt:
+      simplify: true
+    goimports:
+      local-prefixes: [cc-dailyuse-bar]
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
