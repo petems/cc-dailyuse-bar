@@ -23,7 +23,7 @@ The application displays in your system tray as:
 
 ### Prerequisites
 
-- Go 1.19 or later
+- Go 1.21 or later
 - `ccusage` binary installed and accessible in PATH
 - macOS, Linux, or Windows
 
@@ -78,9 +78,15 @@ debug_level: "INFO"
 # Run directly
 make run
 
+# Run as daemon (background process)
+make daemon
+
 # Or build and run
 make build
 ./cc-dailyuse-bar
+
+# Run as daemon with command line flag
+./cc-dailyuse-bar --daemon
 ```
 
 ### System Tray Menu
@@ -103,21 +109,24 @@ Right-click the tray icon to access:
 
 ```
 src/
-├── main.go                 # Application entry point
-├── models/                 # Data models
-│   ├── alert_status.go     # Status enumeration
-│   ├── config.go          # Configuration model
-│   ├── template_data.go   # Template data structures
-│   └── usage_state.go     # Usage state model
-├── services/              # Business logic
-│   ├── config_service.go  # Configuration management
-│   └── usage_service.go   # Usage data service
-├── lib/                   # Utilities
-│   ├── errors.go          # Error handling
-│   ├── logger.go          # Structured logging
-│   └── template_engine.go # Template processing
-└── resources/             # Static resources
-    └── icons.go           # Tray icons
+├── main.go                 # Application entry point with systray integration
+├── models/                 # Data models and business logic
+│   ├── alert_status.go     # Status enumeration (Green/Yellow/Red/Gray)
+│   ├── config.go          # Configuration model with validation
+│   ├── template_data.go   # Template data structures for display
+│   └── usage_state.go     # Usage state model with status calculation
+├── services/              # Business logic layer
+│   ├── config_service.go  # XDG-compliant configuration management
+│   └── usage_service.go   # ccusage integration and polling service
+└── lib/                   # Utilities and shared functionality
+    ├── errors.go          # Custom error types with categorization
+    ├── logger.go          # Structured logging with configurable levels
+    └── template_engine.go # Template processing for display formats
+
+tests/                     # Comprehensive test suite
+├── contract/              # Service interface contract tests
+├── integration/           # End-to-end workflow tests  
+└── unit/                  # Additional unit test coverage
 ```
 
 ### Available Make Targets
@@ -126,22 +135,46 @@ src/
 make help                 # Show all available targets
 make build               # Build the binary
 make run                 # Run the application
+make daemon              # Run as daemon (background process)
 make test                # Run tests
+make test-race           # Run tests with race detection
+make bench               # Run benchmarks
 make lint                # Run linter
+make lint-fix            # Run linter with auto-fix
+make fmt                 # Format Go code
+make vet                 # Run go vet
+make format              # Run fmt + lint-fix together
 make clean               # Clean build artifacts
 make deps                # Download dependencies
-make coverage            # Run tests with coverage
+make deps-update         # Update dependencies
+make coverage            # Run tests with coverage report
+make coverage-func       # Show coverage percentage by function
+make coverage-html       # Generate HTML coverage report
 make dev-setup           # Set up development environment
+make install             # Install the binary
+make install-service     # Install as systemd service (Linux)
+make uninstall-service   # Remove systemd service (Linux)
+make security            # Check for security vulnerabilities
+make check               # Run lint, test, and build
+make ci                  # CI pipeline (deps, lint, test, build)
 ```
 
 ### Testing
+
+The project includes comprehensive test coverage with multiple test types:
 
 ```bash
 # Run all tests
 make test
 
-# Run tests with coverage
+# Run tests with coverage report
 make coverage
+
+# Run tests with coverage (HTML report)
+make coverage-html
+
+# Show coverage by function
+make coverage-func
 
 # Run tests with race detection
 make test-race
@@ -150,7 +183,13 @@ make test-race
 make bench
 ```
 
-### Linting
+#### Test Structure
+- **Unit tests**: `src/*/test.go` - Individual component tests
+- **Contract tests**: `tests/contract/` - Service interface contracts  
+- **Integration tests**: `tests/integration/` - End-to-end workflows
+- **Additional unit tests**: `tests/unit/` - Extra unit test coverage
+
+### Code Quality
 
 ```bash
 # Run linter
@@ -160,19 +199,32 @@ make lint
 make lint-fix
 
 # Format code
+make fmt
+
+# Run go vet
+make vet
+
+# Format + lint-fix combined
 make format
+
+# Check for security vulnerabilities
+make security
+
+# Run all quality checks (lint, test, build)
+make check
 ```
 
 ## Dependencies
 
 - [github.com/getlantern/systray](https://github.com/getlantern/systray) - Cross-platform system tray support
-- [github.com/adrg/xdg](https://github.com/adrg/xdg) - XDG Base Directory support
+- [github.com/adrg/xdg](https://github.com/adrg/xdg) - XDG Base Directory support  
 - [gopkg.in/yaml.v3](https://gopkg.in/yaml.v3) - YAML configuration parsing
+- [github.com/stretchr/testify](https://github.com/stretchr/testify) - Testing toolkit
 
 ## Requirements
 
 - **ccusage**: The application requires the `ccusage` binary to be installed and accessible
-- **Go**: Version 1.19 or later for building from source
+- **Go**: Version 1.21 or later for building from source
 - **Platform**: macOS, Linux, or Windows
 
 ## Troubleshooting
