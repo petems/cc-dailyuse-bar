@@ -19,29 +19,33 @@ var errCCUsageUnavailable = errors.New("ccusage is not available")
 
 // UsageService implements Claude Code usage tracking via ccusage integration
 type UsageService struct {
-	lastQuery      time.Time
-	state          *models.UsageState
-	logger         *lib.Logger
-	ticker         *time.Ticker
-	pollStopChan   chan struct{}
-	resetStopChan  chan struct{}
-	updateCallback func(*models.UsageState)
-	ccusagePath    string
-	cacheWindow    time.Duration
-	mutex          sync.RWMutex // Protect shared state access
-	cmdTimeout     time.Duration
+	lastQuery       time.Time
+	state           *models.UsageState
+	logger          *lib.Logger
+	ticker          *time.Ticker
+	pollStopChan    chan struct{}
+	resetStopChan   chan struct{}
+	updateCallback  func(*models.UsageState)
+	ccusagePath     string
+	cacheWindow     time.Duration
+	mutex           sync.RWMutex // Protect shared state access
+	cmdTimeout      time.Duration
+	yellowThreshold float64
+	redThreshold    float64
 }
 
 // NewUsageService creates a new UsageService instance
 func NewUsageService(config *models.Config) *UsageService {
 	return &UsageService{
-		ccusagePath:   config.CCUsagePath,
-		state:         models.NewUsageState(),
-		cacheWindow:   time.Duration(config.CacheWindow) * time.Second,
-		logger:        lib.NewLogger("usage-service"),
-		pollStopChan:  make(chan struct{}),
-		resetStopChan: make(chan struct{}),
-		cmdTimeout:    time.Duration(config.CmdTimeout) * time.Second,
+		ccusagePath:     config.CCUsagePath,
+		state:           models.NewUsageState(),
+		cacheWindow:     time.Duration(config.CacheWindow) * time.Second,
+		logger:          lib.NewLogger("usage-service"),
+		pollStopChan:    make(chan struct{}),
+		resetStopChan:   make(chan struct{}),
+		cmdTimeout:      time.Duration(config.CmdTimeout) * time.Second,
+		yellowThreshold: config.YellowThreshold,
+		redThreshold:    config.RedThreshold,
 	}
 }
 
@@ -114,13 +118,8 @@ func (us *UsageService) setUnknownState() {
 }
 
 func (us *UsageService) setUnknownStateLocked() {
-	now := time.Now()
-	us.state.DailyCount = 0
-	us.state.DailyCost = 0.0
-	us.state.LastUpdate = now
-	us.state.IsAvailable = false
+	us.setStateMetricsLocked(0, 0, false)
 	us.state.Status = models.Unknown
-	us.lastQuery = now
 }
 
 // setNoDataForToday sets state for when ccusage works but has no data for today
@@ -131,12 +130,16 @@ func (us *UsageService) setNoDataForToday() {
 }
 
 func (us *UsageService) setNoDataForTodayLocked() {
+	us.setStateMetricsLocked(0, 0, true)
+	us.updateStatusLocked() // $0.00 cost should evaluate to Green
+}
+
+func (us *UsageService) setStateMetricsLocked(tokens int, cost float64, available bool) {
 	now := time.Now()
-	us.state.DailyCount = 0
-	us.state.DailyCost = 0.0
+	us.state.DailyCount = tokens
+	us.state.DailyCost = cost
 	us.state.LastUpdate = now
-	us.state.IsAvailable = true    // ccusage itself works
-	us.state.Status = models.Green // $0.00 is Green status
+	us.state.IsAvailable = available
 	us.lastQuery = now
 }
 
@@ -197,7 +200,9 @@ func (us *UsageService) SetCCUsagePath(path string) error {
 func (us *UsageService) SetThresholds(yellowThreshold, redThreshold float64) {
 	us.mutex.Lock()
 	defer us.mutex.Unlock()
-	us.state.UpdateStatus(yellowThreshold, redThreshold)
+	us.yellowThreshold = yellowThreshold
+	us.redThreshold = redThreshold
+	us.updateStatusLocked()
 }
 
 // T025: Connect to ccusage binary with retry logic
@@ -375,12 +380,12 @@ func (us *UsageService) applyUsageData(output CCUsageOutput) {
 }
 
 func (us *UsageService) applyUsageDataLocked(output CCUsageOutput) {
-	now := time.Now()
-	us.state.DailyCount = output.TotalTokens
-	us.state.DailyCost = output.TotalCost
-	us.state.LastUpdate = now
-	us.state.IsAvailable = true
-	us.lastQuery = now
+	us.setStateMetricsLocked(output.TotalTokens, output.TotalCost, true)
+	us.updateStatusLocked()
+}
+
+func (us *UsageService) updateStatusLocked() {
+	us.state.UpdateStatus(us.yellowThreshold, us.redThreshold)
 }
 
 func (us *UsageService) logCommandFailure(err error, output []byte, extra map[string]interface{}) {
