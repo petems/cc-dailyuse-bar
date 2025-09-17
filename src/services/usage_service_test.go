@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -470,28 +471,37 @@ echo '` + string(jsonData) + `'`
 func TestUsageService_ConcurrentAccess(t *testing.T) {
 	service := newTestUsageService()
 
-	// Test concurrent access to state
-	done := make(chan bool, 10)
+	// Prime the cache with valid data so GetDailyUsage() returns in-memory data
+	// instead of shelling out to the real ccusage binary which is not present in CI.
+	service.cacheWindow = time.Hour
+	service.lastQuery = time.Now()
+	service.state.IsAvailable = true
+	service.state.DailyCount = 100
+	service.state.DailyCost = 5.0
+
+	// Test concurrent reads of cached data
+	var wg sync.WaitGroup
+	wg.Add(10)
 
 	for i := 0; i < 10; i++ {
 		go func(id int) {
-			// Set some data
-			service.state.DailyCount = id
-			service.state.DailyCost = float64(id) * 0.1
-
-			// Get data
+			defer wg.Done()
+			
+			// Test concurrent reads - no writes to avoid data races
 			state, err := service.GetDailyUsage()
 			assert.NoError(t, err)
 			assert.NotNil(t, state)
+			
+			// Verify the cached data is returned consistently
+			assert.True(t, state.IsAvailable)
+			assert.Equal(t, 100, state.DailyCount)
+			assert.Equal(t, 5.0, state.DailyCost)
 
-			done <- true
 		}(i)
 	}
 
 	// Wait for all goroutines to complete
-	for i := 0; i < 10; i++ {
-		<-done
-	}
+	wg.Wait()
 }
 
 func TestUsageService_EdgeCases(t *testing.T) {
