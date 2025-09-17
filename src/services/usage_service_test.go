@@ -470,6 +470,12 @@ echo '` + string(jsonData) + `'`
 func TestUsageService_ConcurrentAccess(t *testing.T) {
 	service := newTestUsageService()
 
+	// Prime the cache so GetDailyUsage() returns in-memory data instead of
+	// shelling out to the real ccusage binary which is not present in CI.
+	service.cacheWindow = time.Hour
+	service.lastQuery = time.Now()
+	service.state.IsAvailable = true
+
 	// Test concurrent access to state
 	done := make(chan bool, 10)
 
