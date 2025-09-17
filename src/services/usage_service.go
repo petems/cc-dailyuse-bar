@@ -269,6 +269,7 @@ func (us *UsageService) performUpdateLocked(maxRetries int) (*models.UsageState,
 			if lastErr == nil {
 				lastErr = err
 			}
+			us.setUnknownStateLocked()
 			return us.getStateCopyLocked(), lastErr
 		}
 
