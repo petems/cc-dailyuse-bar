@@ -11,17 +11,23 @@ permissions:
 
 jobs:
   test:
-    name: Test (${{ matrix.go-version }})
-    runs-on: ubuntu-latest
+    name: Test (${{ matrix.go-version }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         go-version: [ '1.24.x' ]
+        os: [ ubuntu-latest, macos-latest ]
     steps:
       - uses: actions/checkout@v4
       - name: Setup Go ${{ matrix.go-version }}
         uses: actions/setup-go@v5
         with:
           go-version: ${{ matrix.go-version }}
+      - name: Install system dependencies (Ubuntu)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt update
+          sudo apt install -y libayatana-appindicator3-dev pkg-config
       - name: Install dependencies
         run: go mod download
       - name: Build
