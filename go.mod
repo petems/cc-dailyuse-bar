@@ -3,7 +3,7 @@ module cc-dailyuse-bar
 go 1.21
 
 require (
-	github.com/adrg/xdg v0.4.0
+	github.com/adrg/xdg v0.5.3
 	github.com/getlantern/systray v1.2.2
 	github.com/stretchr/testify v1.10.0
 	gopkg.in/yaml.v3 v3.0.1
