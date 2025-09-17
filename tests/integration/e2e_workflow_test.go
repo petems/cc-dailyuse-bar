@@ -2,6 +2,7 @@ package integration
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -11,6 +12,13 @@ import (
 	"cc-dailyuse-bar/src/models"
 	"cc-dailyuse-bar/src/services"
 )
+
+func requireCCUsageBinaryIntegration(t *testing.T) {
+	t.Helper()
+	if _, err := exec.LookPath("ccusage"); err != nil {
+		t.Skipf("ccusage binary not available: %v", err)
+	}
+}
 
 // T012: E2E test for complete user workflow from installation to monitoring
 // Adjusted to exclude GUI/Fyne usage
@@ -141,6 +149,7 @@ func TestCompleteUserWorkflow(t *testing.T) {
 
 	// Step 4: Daily reset simulation
 	t.Run("DailyReset", func(t *testing.T) {
+		requireCCUsageBinaryIntegration(t)
 		config := models.ConfigDefaults()
 		usageService := services.NewUsageService(config)
 
@@ -214,6 +223,7 @@ func TestUserErrorScenarios(t *testing.T) {
 	})
 
 	t.Run("MissingCCUsageRecovery", func(t *testing.T) {
+		requireCCUsageBinaryIntegration(t)
 		config := models.ConfigDefaults()
 		usageService := services.NewUsageService(config)
 
