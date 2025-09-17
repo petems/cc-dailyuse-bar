@@ -480,7 +480,6 @@ func TestUsageService_ConcurrentAccess(t *testing.T) {
 	service.state.DailyCost = 5.0
 
 	// Test concurrent reads of cached data
-	done := make(chan bool, 10)
 	var wg sync.WaitGroup
 	wg.Add(10)
 
@@ -498,15 +497,11 @@ func TestUsageService_ConcurrentAccess(t *testing.T) {
 			assert.Equal(t, 100, state.DailyCount)
 			assert.Equal(t, 5.0, state.DailyCost)
 
-			done <- true
 		}(i)
 	}
 
 	// Wait for all goroutines to complete
 	wg.Wait()
-	for i := 0; i < 10; i++ {
-		<-done
-	}
 }
 
 func TestUsageService_EdgeCases(t *testing.T) {

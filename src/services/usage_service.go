@@ -67,27 +67,53 @@ type CCUsageResponse struct {
 func (us *UsageService) GetDailyUsage() (*models.UsageState, error) {
 	us.mutex.RLock()
 	if time.Since(us.lastQuery) < us.cacheWindow && us.state.IsAvailable {
-		// Return a copy to avoid concurrent access to the returned state
+		// Copy the cached state while still holding the read lock to avoid
+		// check-then-act races with concurrent writers.
 		stateCopy := *us.state
 		us.mutex.RUnlock()
 		return &stateCopy, nil
 	}
 	us.mutex.RUnlock()
 
-	return us.UpdateUsage()
+	us.mutex.Lock()
+	defer us.mutex.Unlock()
+
+	if time.Since(us.lastQuery) < us.cacheWindow && us.state.IsAvailable {
+		return us.getStateCopyLocked(), nil
+	}
+
+	return us.performUpdateLocked(1)
 }
 
 // UpdateUsage forces a fresh query to ccusage, bypassing cache
 // Used for immediate updates when user requests refresh
 // Returns error if ccusage command fails or data is invalid
 func (us *UsageService) UpdateUsage() (*models.UsageState, error) {
-	return us.performUpdate(1)
+	us.mutex.Lock()
+	defer us.mutex.Unlock()
+	return us.performUpdateLocked(1)
+}
+
+// getStateCopy returns a thread-safe copy of the current state
+func (us *UsageService) getStateCopy() *models.UsageState {
+	us.mutex.RLock()
+	defer us.mutex.RUnlock()
+	return us.getStateCopyLocked()
+}
+
+func (us *UsageService) getStateCopyLocked() *models.UsageState {
+	stateCopy := *us.state
+	return &stateCopy
 }
 
 // setUnknownState marks the usage data as unavailable/unknown
 func (us *UsageService) setUnknownState() {
 	us.mutex.Lock()
 	defer us.mutex.Unlock()
+	us.setUnknownStateLocked()
+}
+
+func (us *UsageService) setUnknownStateLocked() {
 	now := time.Now()
 	us.state.DailyCount = 0
 	us.state.DailyCost = 0.0
@@ -101,11 +127,15 @@ func (us *UsageService) setUnknownState() {
 func (us *UsageService) setNoDataForToday() {
 	us.mutex.Lock()
 	defer us.mutex.Unlock()
+	us.setNoDataForTodayLocked()
+}
+
+func (us *UsageService) setNoDataForTodayLocked() {
 	now := time.Now()
 	us.state.DailyCount = 0
 	us.state.DailyCost = 0.0
 	us.state.LastUpdate = now
-	us.state.IsAvailable = true // ccusage itself works
+	us.state.IsAvailable = true    // ccusage itself works
 	us.state.Status = models.Green // $0.00 is Green status
 	us.lastQuery = now
 }
@@ -172,10 +202,14 @@ func (us *UsageService) SetThresholds(yellowThreshold, redThreshold float64) {
 
 // T025: Connect to ccusage binary with retry logic
 func (us *UsageService) updateWithRetry(maxRetries int) (*models.UsageState, error) {
-	return us.performUpdate(maxRetries)
+	us.mutex.Lock()
+	defer us.mutex.Unlock()
+	return us.performUpdateLocked(maxRetries)
 }
 
-func (us *UsageService) performUpdate(maxRetries int) (*models.UsageState, error) {
+// performUpdateLocked assumes us.mutex is already held by the caller.
+// It returns a copy of the current state after attempting to refresh usage data.
+func (us *UsageService) performUpdateLocked(maxRetries int) (*models.UsageState, error) {
 	if maxRetries < 1 {
 		maxRetries = 1
 	}
@@ -206,11 +240,8 @@ func (us *UsageService) performUpdate(maxRetries int) (*models.UsageState, error
 			if lastErr == nil {
 				lastErr = errCCUsageUnavailable
 			}
-			us.setUnknownState()
-			us.mutex.RLock()
-			stateCopy := *us.state
-			us.mutex.RUnlock()
-			return &stateCopy, lastErr
+			us.setUnknownStateLocked()
+			return us.getStateCopyLocked(), lastErr
 		}
 
 		output, err := us.executeCCUsage()
@@ -227,9 +258,7 @@ func (us *UsageService) performUpdate(maxRetries int) (*models.UsageState, error
 				extra["attempt"] = attempt
 				extra["maxRetries"] = maxRetries
 			}
-			us.mutex.Lock()
 			us.state.IsAvailable = false
-			us.mutex.Unlock()
 			us.logCommandFailure(err, output, extra)
 
 			if attempt < maxRetries {
@@ -240,10 +269,7 @@ func (us *UsageService) performUpdate(maxRetries int) (*models.UsageState, error
 			if lastErr == nil {
 				lastErr = err
 			}
-			us.mutex.RLock()
-			stateCopy := *us.state
-			us.mutex.RUnlock()
-			return &stateCopy, lastErr
+			return us.getStateCopyLocked(), lastErr
 		}
 
 		response, err := parseCCUsageResponse(output)
@@ -253,11 +279,8 @@ func (us *UsageService) performUpdate(maxRetries int) (*models.UsageState, error
 				"out_len": len(output),
 				"output":  truncateOutput(output),
 			})
-			us.setUnknownState()
-			us.mutex.RLock()
-			stateCopy := *us.state
-			us.mutex.RUnlock()
-			return &stateCopy, lib.WrapError(err, lib.ErrCodeCCUsage, "failed to parse ccusage JSON output")
+			us.setUnknownStateLocked()
+			return us.getStateCopyLocked(), lib.WrapError(err, lib.ErrCodeCCUsage, "failed to parse ccusage JSON output")
 		}
 
 		today := time.Now().Format("2006-01-02")
@@ -267,11 +290,8 @@ func (us *UsageService) performUpdate(maxRetries int) (*models.UsageState, error
 				"today":          today,
 				"availableDates": availableDates(response.Daily),
 			})
-			us.setNoDataForToday()
-			us.mutex.RLock()
-			stateCopy := *us.state
-			us.mutex.RUnlock()
-			return &stateCopy, lib.WrapError(errors.New("no data for today"), lib.ErrCodeCCUsage, "ccusage has no data for today")
+			us.setNoDataForTodayLocked()
+			return us.getStateCopyLocked(), lib.WrapError(errors.New("no data for today"), lib.ErrCodeCCUsage, "ccusage has no data for today")
 		}
 
 		if ccusageOutput.TotalCost == 0 && ccusageOutput.TotalTokens == 0 {
@@ -280,14 +300,11 @@ func (us *UsageService) performUpdate(maxRetries int) (*models.UsageState, error
 				"totalCost":   ccusageOutput.TotalCost,
 				"date":        ccusageOutput.Date,
 			})
-			us.setUnknownState()
-			us.mutex.RLock()
-			stateCopy := *us.state
-			us.mutex.RUnlock()
-			return &stateCopy, lib.WrapError(errors.New("ccusage returned zero values"), lib.ErrCodeCCUsage, "ccusage returned invalid zero values")
+			us.setUnknownStateLocked()
+			return us.getStateCopyLocked(), lib.WrapError(errors.New("ccusage returned zero values"), lib.ErrCodeCCUsage, "ccusage returned invalid zero values")
 		}
 
-		us.applyUsageData(ccusageOutput)
+		us.applyUsageDataLocked(ccusageOutput)
 
 		context := map[string]interface{}{
 			"totalTokens": ccusageOutput.TotalTokens,
@@ -299,20 +316,14 @@ func (us *UsageService) performUpdate(maxRetries int) (*models.UsageState, error
 		}
 		us.logger.Info("Successfully parsed ccusage data", context)
 
-		us.mutex.RLock()
-		stateCopy := *us.state
-		us.mutex.RUnlock()
-		return &stateCopy, nil
+		return us.getStateCopyLocked(), nil
 	}
 
 	if lastErr == nil {
 		lastErr = errCCUsageUnavailable
 	}
-	us.setUnknownState()
-	us.mutex.RLock()
-	stateCopy := *us.state
-	us.mutex.RUnlock()
-	return &stateCopy, lastErr
+	us.setUnknownStateLocked()
+	return us.getStateCopyLocked(), lastErr
 }
 
 func (us *UsageService) executeCCUsage() ([]byte, error) {
@@ -360,6 +371,10 @@ func availableDates(daily []CCUsageOutput) []string {
 func (us *UsageService) applyUsageData(output CCUsageOutput) {
 	us.mutex.Lock()
 	defer us.mutex.Unlock()
+	us.applyUsageDataLocked(output)
+}
+
+func (us *UsageService) applyUsageDataLocked(output CCUsageOutput) {
 	now := time.Now()
 	us.state.DailyCount = output.TotalTokens
 	us.state.DailyCost = output.TotalCost

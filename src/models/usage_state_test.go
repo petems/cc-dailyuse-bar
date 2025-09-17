@@ -239,7 +239,6 @@ func TestUsageState_ConcurrentAccess(t *testing.T) {
 	expectedStatus := state.Status // Should be Yellow since 7.5 > 5.0 but < 10.0
 
 	// Simulate concurrent reads (no writes to avoid data races)
-	done := make(chan bool, 10)
 	var wg sync.WaitGroup
 	wg.Add(10)
 
@@ -252,15 +251,11 @@ func TestUsageState_ConcurrentAccess(t *testing.T) {
 			assert.Equal(t, expectedStatus, state.Status)
 			assert.True(t, state.Status >= Green && state.Status <= Red)
 			
-			done <- true
 		}(i)
 	}
 
 	// Wait for all goroutines to complete
 	wg.Wait()
-	for i := 0; i < 10; i++ {
-		<-done
-	}
 
 	// Final verification
 	assert.Equal(t, Yellow, state.Status)
