@@ -12,12 +12,16 @@ linters:
     - misspell
     - unused
     - staticcheck
+    - gosec
   settings:
     govet:
       enable-all: true
     revive:
       rules:
         - name: exported
+    gosec:
+      config:
+        G301: "0o700"
 
 formatters:
   enable:

@@ -173,7 +173,7 @@ func (cs *ConfigService) useFallbackPath() string {
 
 func (cs *ConfigService) writeConfigFile(path string, data []byte) error {
 	configDir := filepath.Dir(path)
-	if err := os.MkdirAll(configDir, 0755); err != nil {
+	if err := os.MkdirAll(configDir, 0700); err != nil {
 		return err
 	}
 	return os.WriteFile(path, data, 0600)
@@ -199,7 +199,7 @@ func (cs *ConfigService) fallbackMarkerPath() string {
 
 func (cs *ConfigService) persistFallbackPath(path string) {
 	markerPath := cs.fallbackMarkerPath()
-	if err := os.MkdirAll(filepath.Dir(markerPath), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(markerPath), 0700); err != nil {
 		cs.warn("Failed to persist fallback path", map[string]interface{}{"error": err})
 		return
 	}

@@ -241,18 +241,13 @@ func (us *UsageService) performUpdate(maxRetries int) (*models.UsageState, error
 
 		response, err := parseCCUsageResponse(output)
 		if err != nil {
-			us.logger.Warn("ccusage JSON parsing failed, falling back to defaults", map[string]interface{}{
+			us.logger.Warn("ccusage JSON parsing failed, marking as unknown", map[string]interface{}{
 				"error":   err.Error(),
 				"out_len": len(output),
 				"output":  truncateOutput(output),
 			})
-			us.applyUsageData(CCUsageOutput{
-				Date:        time.Now().Format("2006-01-02"),
-				TotalTokens: 0,
-				TotalCost:   0,
-			})
-			us.state.UpdateStatus(us.yellowThreshold, us.redThreshold)
-			return us.state, nil // Don't return error - handle gracefully
+			us.setUnknownState()
+			return us.state, lib.WrapError(err, lib.ErrCodeCCUsage, "failed to parse ccusage JSON output")
 		}
 
 		today := time.Now().Format("2006-01-02")
