@@ -18,6 +18,8 @@ The application displays in your system tray as:
 - `CC 🟢 $0.45` - Normal usage (below yellow threshold)
 - `CC 🟡 $12.50` - High usage (above yellow threshold)
 - `CC 🔴 $25.00` - Critical usage (above red threshold)
+- `CC 🟢 $0.00` - No usage data for today (ccusage works but no data)
+- `CC ⚪️ Unknown` - ccusage unavailable or error state
 
 ## Installation
 
@@ -96,10 +98,14 @@ Right-click the tray icon to access:
 
 ### Status Indicators
 
-- 🟢 **Green**: Usage below yellow threshold (normal)
+- 🟢 **Green**: Usage below yellow threshold (normal) or no data for today ($0.00)
 - 🟡 **Yellow**: Usage above yellow but below red threshold (warning)
 - 🔴 **Red**: Usage above red threshold (critical)
-- ⚪️ **Gray**: ccusage unavailable or error state
+- ⚪️ **Unknown**: ccusage binary unavailable, command failed, or data parsing error
+
+**Important**: The application now distinguishes between two zero-cost scenarios:
+- `CC 🟢 $0.00` - ccusage is working but you haven't used Claude Code today
+- `CC ⚪️ Unknown` - ccusage binary is unavailable or not functioning properly
 
 ## Development
 
@@ -109,7 +115,7 @@ Right-click the tray icon to access:
 src/
 ├── main.go                 # Application entry point with systray integration
 ├── models/                 # Data models and business logic
-│   ├── alert_status.go     # Status enumeration (Green/Yellow/Red/Gray)
+│   ├── alert_status.go     # Status enumeration (Green/Yellow/Red/Unknown)
 │   ├── config.go          # Configuration model with validation
 │   ├── template_data.go   # Template data structures for display
 │   └── usage_state.go     # Usage state model with status calculation
@@ -240,6 +246,31 @@ make check
 2. Check the configuration file for the correct path
 3. Test manually: `ccusage daily --json`
 
+If ccusage is completely unavailable, the app will show `CC ⚪️ Unknown`
+
+### Understanding Status Display
+
+The application shows different indicators based on data availability:
+
+**Green Status ($0.00)**: 
+- ccusage is working properly
+- No Claude Code usage recorded for today
+- Normal state for new days or days without usage
+
+**Unknown Status (⚪️)**:
+- ccusage binary not found or not executable  
+- ccusage command fails or returns invalid data
+- Network/permission issues preventing ccusage execution
+
+**Testing Status**:
+```bash
+# Test if ccusage works (should show Green $0.00 or actual usage)
+ccusage daily --json
+
+# Test what happens when ccusage fails (should show Unknown)
+CC_USAGE_PATH=/invalid/path ./cc-dailyuse-bar
+```
+
 ### Configuration Issues
 
 1. Check the config file location: `~/.config/cc-dailyuse-bar/config.yaml`
@@ -276,6 +307,15 @@ Available log levels:
 [Add your license information here]
 
 ## Changelog
+
+### Latest
+- **feat: distinguish between no data today vs data unavailable**
+  - Add Unknown status to AlertStatus enum for ccusage unavailable scenarios
+  - Remove misleading simulation fallback logic completely
+  - Show `CC 🟢 $0.00` when ccusage works but has no data for today
+  - Show `CC ⚪️ Unknown` when ccusage binary is unavailable or fails
+  - Add comprehensive tests for both scenarios
+  - Fix config validation with missing required fields
 
 ### v1.0.0
 - Initial release

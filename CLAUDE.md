@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-cc-dailyuse-bar is a Go-based system tray application that monitors daily Claude Code usage via the `ccusage` binary. It displays real-time cost information with color-coded status indicators (🟢 Green, 🟡 Yellow, 🔴 Red) based on configurable thresholds.
+cc-dailyuse-bar is a Go-based system tray application that monitors daily Claude Code usage via the `ccusage` binary. It displays real-time cost information with color-coded status indicators (🟢 Green, 🟡 Yellow, 🔴 Red, ⚪️ Unknown) based on configurable thresholds and data availability.
 
 ## Architecture
 
@@ -16,7 +16,7 @@ The application follows a clean architecture pattern with clear separation of co
 - **models/**: Data models and business logic
   - `Config`: Configuration management with validation
   - `UsageState`: Current usage state with status calculation
-  - `AlertStatus`: Status enumeration (Green/Yellow/Red/Gray)
+  - `AlertStatus`: Status enumeration (Green/Yellow/Red/Unknown)
   - `TemplateData`: Template data structures for display formatting
 - **services/**: Business logic layer
   - `ConfigService`: XDG-compliant configuration management
@@ -102,7 +102,26 @@ The application depends on the `ccusage` binary being installed and accessible. 
 }
 ```
 
-When `ccusage` is unavailable, the application falls back to simulated data for development.
+## Status Handling Logic
+
+The application distinguishes between different data availability scenarios:
+
+**Available Data States**:
+- `IsAvailable = true, Status = Green/Yellow/Red`: ccusage works and returns valid data
+- `IsAvailable = true, Status = Green, DailyCost = 0.0`: ccusage works but no data for today
+
+**Unavailable Data States**:  
+- `IsAvailable = false, Status = Unknown`: ccusage binary not found, not executable, or command fails
+- `IsAvailable = false, Status = Unknown`: ccusage returns invalid JSON or zero values when data expected
+
+**Display Behavior**:
+- `CC 🟢 $0.00` - No usage today (normal state for new days)
+- `CC ⚪️ Unknown` - ccusage unavailable or data corruption
+
+**Key Functions in UsageService**:
+- `setNoDataForToday()`: Sets state for when ccusage works but has no data for today (shows $0.00)
+- `setUnknownState()`: Sets state for when ccusage is unavailable or fails (shows Unknown)
+- `performUpdate()`: Main logic that determines which state function to call based on ccusage availability
 
 ## Error Handling
 
@@ -118,6 +137,11 @@ All errors are logged with structured context using the built-in logger.
 - **Mocking**: Uses testify/mock for service layer testing
 - **Fixtures**: Test configuration files in XDG-compliant paths
 - **Integration**: Full workflow tests including ccusage simulation
+- **Status Scenarios**: Specific tests for data availability vs unavailability:
+  - `TestUsageService_NoDataForToday`: Tests $0.00 display when ccusage works but no data
+  - `TestUsageService_DataUnavailable`: Tests Unknown status when ccusage fails
+  - `TestUsageService_SetNoDataForToday`: Tests helper function for no-data state
+  - `TestUsageService_SetUnknownState`: Tests helper function for unknown state
 - **Coverage**: Comprehensive test coverage across all layers
 - **Race Detection**: All tests run with race detection in CI
 
