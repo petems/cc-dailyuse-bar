@@ -159,12 +159,20 @@ func (us *UsageService) IsAvailable() bool {
 		return false
 	}
 
-	info, err := os.Stat(us.ccusagePath)
+	pathToCheck := us.ccusagePath
+	info, err := os.Stat(pathToCheck)
 	if err != nil {
-		if _, pathErr := exec.LookPath(us.ccusagePath); pathErr != nil {
+		resolvedPath, pathErr := exec.LookPath(us.ccusagePath)
+		if pathErr != nil {
 			return false
 		}
-		return true
+
+		info, err = os.Stat(resolvedPath)
+		if err != nil {
+			return false
+		}
+
+		pathToCheck = resolvedPath
 	}
 
 	if info.IsDir() {
