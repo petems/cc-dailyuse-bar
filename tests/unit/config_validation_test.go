@@ -25,7 +25,8 @@ func TestConfig_Defaults(t *testing.T) {
 func TestConfigService_Validate_ValidConfig(t *testing.T) {
 	service := services.NewConfigService()
 	config := &models.Config{
-		CCUsagePath:     "/usr/local/bin/ccusage",
+		// Use a placeholder path so the test never depends on a real ccusage binary
+		CCUsagePath:     "/tmp/fake-ccusage",
 		UpdateInterval:  60,
 		YellowThreshold: 8.0,
 		RedThreshold:    15.0,
