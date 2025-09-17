@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"cc-dailyuse-bar/src/models"
 	"cc-dailyuse-bar/src/services"
 )
 
@@ -16,7 +17,8 @@ import (
 
 func TestCCUsageIntegration(t *testing.T) {
 	// Arrange
-	usageService := services.NewUsageService()
+	config := models.ConfigDefaults()
+	usageService := services.NewUsageService(config)
 
 	// Check if ccusage is available in the test environment
 	_, err := exec.LookPath("ccusage")
@@ -38,7 +40,8 @@ func TestCCUsageIntegration(t *testing.T) {
 
 func TestCCUsageUpdate(t *testing.T) {
 	// Arrange
-	usageService := services.NewUsageService()
+	config := models.ConfigDefaults()
+	usageService := services.NewUsageService(config)
 
 	// Check if ccusage is available
 	_, err := exec.LookPath("ccusage")
@@ -58,7 +61,8 @@ func TestCCUsageUpdate(t *testing.T) {
 
 func TestCCUsageUnavailable(t *testing.T) {
 	// Arrange
-	usageService := services.NewUsageService()
+	config := models.ConfigDefaults()
+	usageService := services.NewUsageService(config)
 
 	// Set invalid ccusage path to simulate unavailable scenario
 	err := usageService.SetCCUsagePath("/nonexistent/ccusage")
@@ -73,7 +77,8 @@ func TestCCUsageUnavailable(t *testing.T) {
 
 func TestCCUsagePathConfiguration(t *testing.T) {
 	// Arrange
-	usageService := services.NewUsageService()
+	config := models.ConfigDefaults()
+	usageService := services.NewUsageService(config)
 
 	testCases := []struct {
 		name        string
@@ -119,7 +124,8 @@ func TestCCUsagePathConfiguration(t *testing.T) {
 
 func TestCCUsageRetryLogic(t *testing.T) {
 	// Arrange
-	usageService := services.NewUsageService()
+	config := models.ConfigDefaults()
+	usageService := services.NewUsageService(config)
 
 	// Set ccusage to a command that will fail
 	err := usageService.SetCCUsagePath("/usr/bin/false") // Command that always exits with error
@@ -155,7 +161,8 @@ EOF`
 
 	// This would require creating a temporary executable script
 	// For now, we'll test the interface exists
-	usageService := services.NewUsageService()
+	config := models.ConfigDefaults()
+	usageService := services.NewUsageService(config)
 
 	// Act - Just verify the service can be created
 	assert.NotNil(t, usageService)

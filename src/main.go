@@ -44,12 +44,13 @@ func init() {
 	var err error
 	config, err = configService.Load()
 	if err != nil {
-		// Use defaults if config loading fails
+		// Log the error and use defaults if config loading fails
+		log.Printf("Failed to load configuration: %v", err)
+		log.Printf("Using default configuration")
 		config = models.ConfigDefaults()
 	}
 
-	usageService = services.NewUsageService()
-	_ = usageService.SetCCUsagePath(config.CCUsagePath)
+	usageService = services.NewUsageService(config)
 
 	// Set logging level from config
 	lib.SetGlobalLevel(lib.LogLevel(config.GetLogLevel()))
@@ -73,6 +74,8 @@ func emojiForStatus(status models.AlertStatus) string {
 		return "🟡"
 	case models.Red:
 		return "🔴"
+	case models.Unknown:
+		return "⚪️"
 	default:
 		return "⚪️"
 	}
@@ -129,19 +132,30 @@ func onReady() {
 	systray.AddSeparator()
 	mQuit := systray.AddMenuItem(t("Quit", "終了"), "Quit the application")
 
-	// Start the update loop
+	// Initial update
+	updateStatus()
+
+	// Use the service's polling mechanism instead of creating our own ticker
+	err := usageService.StartPolling(config.UpdateInterval, func(state *models.UsageState) {
+		// This callback will be called by the service on each update
+		updateUIFromState(state)
+	})
+	if err != nil {
+		log.Printf("Failed to start polling: %v", err)
+		// Fallback to manual updates if polling fails
+		go func() {
+			ticker := time.NewTicker(time.Duration(config.UpdateInterval) * time.Second)
+			defer ticker.Stop()
+			for range ticker.C {
+				updateStatus()
+			}
+		}()
+	}
+
+	// Handle menu clicks in a separate goroutine
 	go func() {
-		log.Printf("Starting update loop with interval: %d seconds", config.UpdateInterval)
-		ticker := time.NewTicker(time.Duration(config.UpdateInterval) * time.Second)
-		defer ticker.Stop()
-
-		// Initial update
-		updateStatus()
-
 		for {
 			select {
-			case <-ticker.C:
-				updateStatus()
 			case <-mSettings.ClickedCh:
 				showSettings()
 			case <-mQuit.ClickedCh:
@@ -150,6 +164,36 @@ func onReady() {
 			}
 		}
 	}()
+}
+
+// updateUIFromState updates the UI based on the state provided by the service
+func updateUIFromState(state *models.UsageState) {
+	if state == nil {
+		systray.SetTitle(fmt.Sprintf("CC %s", t("Error", "エラー")))
+		updateMenuItems([]string{fmt.Sprintf("❌ %s", t("No data available", "データがありません"))})
+		return
+	}
+
+	if !state.IsAvailable || state.Status == models.Unknown {
+		systray.SetTitle(fmt.Sprintf("CC %s %s", "⚪️", t("Unknown", "不明")))
+		updateMenuItems([]string{fmt.Sprintf("⚠️ %s", t("Usage data unavailable", "使用データを利用できません"))})
+		return
+	}
+
+	// Compute status based on configured thresholds
+	state.UpdateStatus(config.YellowThreshold, config.RedThreshold)
+	emoji := emojiForStatus(state.Status)
+
+	// Update compact title
+	systray.SetTitle(fmt.Sprintf("CC %s $%.2f", emoji, state.DailyCost))
+
+	// Update detailed menu items
+	detailedInfo := []string{
+		fmt.Sprintf("💰 %s: $%.2f", t("Daily Cost", "1日コスト"), state.DailyCost),
+		fmt.Sprintf("🎯 %s: %d", t("API Calls", "API呼び出し"), state.DailyCount),
+		fmt.Sprintf("📅 %s: %s", t("Last Update", "最終更新"), state.LastUpdate.Format("2006-01-02 15:04:05")),
+	}
+	updateMenuItems(detailedInfo)
 }
 
 func updateStatus() {
@@ -162,26 +206,8 @@ func updateStatus() {
 		return
 	}
 
-	if usage == nil || !usage.IsAvailable {
-		systray.SetTitle(fmt.Sprintf("CC %s $0.00", "⚪️"))
-		updateMenuItems([]string{fmt.Sprintf("⚠️ %s", t("ccusage unavailable", "ccusage を利用できません"))})
-		return
-	}
-
-	// Compute status based on configured thresholds
-	usage.UpdateStatus(config.YellowThreshold, config.RedThreshold)
-	emoji := emojiForStatus(usage.Status)
-
-	// Update compact title
-	systray.SetTitle(fmt.Sprintf("CC %s $%.2f", emoji, usage.DailyCost))
-
-	// Update detailed menu items
-	detailedInfo := []string{
-		fmt.Sprintf("💰 %s: $%.2f", t("Daily Cost", "1日コスト"), usage.DailyCost),
-		fmt.Sprintf("🎯 %s: %d", t("API Calls", "API呼び出し"), usage.DailyCount),
-		fmt.Sprintf("📅 %s: %s", t("Last Update", "最終更新"), usage.LastUpdate.Format("2006-01-02 15:04:05")),
-	}
-	updateMenuItems(detailedInfo)
+	// Use the new updateUIFromState function
+	updateUIFromState(usage)
 }
 
 func updateMenuItems(info []string) {

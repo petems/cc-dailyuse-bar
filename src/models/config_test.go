@@ -23,6 +23,8 @@ func TestConfig_Validate_ValidConfig(t *testing.T) {
 		YellowThreshold: 8.0,
 		RedThreshold:    15.0,
 		DebugLevel:      "INFO",
+		CacheWindow:     10,
+		CmdTimeout:      5,
 	}
 
 	err := config.Validate()
@@ -209,6 +211,8 @@ func TestConfig_Validate_EdgeCases(t *testing.T) {
 		YellowThreshold: 0.0,  // Minimum valid (zero)
 		RedThreshold:    0.01, // Just above yellow
 		DebugLevel:      "INFO",
+		CacheWindow:     1, // Minimum valid
+		CmdTimeout:      1, // Minimum valid
 	}
 
 	err := config.Validate()
@@ -218,6 +222,8 @@ func TestConfig_Validate_EdgeCases(t *testing.T) {
 	config.UpdateInterval = 300 // Maximum valid
 	config.YellowThreshold = 999.99
 	config.RedThreshold = 1000.0
+	config.CacheWindow = 300 // Maximum valid
+	config.CmdTimeout = 60   // Maximum valid
 
 	err = config.Validate()
 	assert.NoError(t, err)
@@ -243,6 +249,8 @@ func TestConfig_Validate_RealWorldScenarios(t *testing.T) {
 				YellowThreshold: 5.0,
 				RedThreshold:    10.0,
 				DebugLevel:      "WARN",
+				CacheWindow:     5,
+				CmdTimeout:      3,
 			},
 			valid: true,
 		},
@@ -254,6 +262,8 @@ func TestConfig_Validate_RealWorldScenarios(t *testing.T) {
 				YellowThreshold: 50.0,
 				RedThreshold:    100.0,
 				DebugLevel:      "ERROR",
+				CacheWindow:     30,
+				CmdTimeout:      10,
 			},
 			valid: true,
 		},
@@ -265,6 +275,8 @@ func TestConfig_Validate_RealWorldScenarios(t *testing.T) {
 				YellowThreshold: 1.0,
 				RedThreshold:    2.0,
 				DebugLevel:      "DEBUG",
+				CacheWindow:     15,
+				CmdTimeout:      8,
 			},
 			valid: true,
 		},

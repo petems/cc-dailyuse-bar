@@ -33,15 +33,15 @@ type UsageService struct {
 }
 
 // NewUsageService creates a new UsageService instance
-func NewUsageService() *UsageService {
+func NewUsageService(config *models.Config) *UsageService {
 	return &UsageService{
-		ccusagePath:   "ccusage",
+		ccusagePath:   config.CCUsagePath,
 		state:         models.NewUsageState(),
-		cacheWindow:   10 * time.Second, // Cache ccusage results briefly
+		cacheWindow:   time.Duration(config.CacheWindow) * time.Second,
 		logger:        lib.NewLogger("usage-service"),
 		pollStopChan:  make(chan struct{}),
 		resetStopChan: make(chan struct{}),
-		cmdTimeout:    5 * time.Second,
+		cmdTimeout:    time.Duration(config.CmdTimeout) * time.Second,
 	}
 }
 
@@ -79,18 +79,25 @@ func (us *UsageService) UpdateUsage() (*models.UsageState, error) {
 	return us.performUpdate(1)
 }
 
-// simulateUsageData provides simulated data when ccusage is unavailable
-// This helps with development and testing
-func (us *UsageService) simulateUsageData() {
+// setUnknownState marks the usage data as unavailable/unknown
+func (us *UsageService) setUnknownState() {
 	now := time.Now()
-	hour := now.Hour()
-	simulatedCount := hour * 3                      // More usage later in day
-	simulatedCost := float64(simulatedCount) * 0.05 // $0.05 per request
-
-	us.state.DailyCount = simulatedCount
-	us.state.DailyCost = simulatedCost
+	us.state.DailyCount = 0
+	us.state.DailyCost = 0.0
 	us.state.LastUpdate = now
-	us.state.IsAvailable = true
+	us.state.IsAvailable = false
+	us.state.Status = models.Unknown
+	us.lastQuery = now
+}
+
+// setNoDataForToday sets state for when ccusage works but has no data for today
+func (us *UsageService) setNoDataForToday() {
+	now := time.Now()
+	us.state.DailyCount = 0
+	us.state.DailyCost = 0.0
+	us.state.LastUpdate = now
+	us.state.IsAvailable = true // ccusage itself works
+	us.state.Status = models.Green // $0.00 is Green status
 	us.lastQuery = now
 }
 
@@ -131,7 +138,7 @@ func (us *UsageService) IsAvailable() bool {
 // Returns error if path is invalid or not executable
 func (us *UsageService) SetCCUsagePath(path string) error {
 	if path == "" {
-		return errors.New("ccusage path cannot be empty")
+		return lib.ValidationError("ccusage path cannot be empty")
 	}
 
 	oldPath := us.ccusagePath
@@ -139,7 +146,7 @@ func (us *UsageService) SetCCUsagePath(path string) error {
 
 	if !us.IsAvailable() {
 		us.ccusagePath = oldPath
-		return errors.New("ccusage path is not executable: " + path)
+		return lib.ValidationError("ccusage path is not executable: " + path)
 	}
 
 	return nil
@@ -173,7 +180,6 @@ func (us *UsageService) performUpdate(maxRetries int) (*models.UsageState, error
 
 		if !us.IsAvailable() {
 			lastErr = errCCUsageUnavailable
-			us.state.IsAvailable = false
 			us.logger.Warn("ccusage not available", map[string]interface{}{
 				"attempt": attempt,
 				"path":    us.ccusagePath,
@@ -187,6 +193,7 @@ func (us *UsageService) performUpdate(maxRetries int) (*models.UsageState, error
 			if lastErr == nil {
 				lastErr = errCCUsageUnavailable
 			}
+			us.setUnknownState()
 			return us.state, lastErr
 		}
 
@@ -220,34 +227,34 @@ func (us *UsageService) performUpdate(maxRetries int) (*models.UsageState, error
 
 		response, err := parseCCUsageResponse(output)
 		if err != nil {
-			us.logger.Info("ccusage JSON parsing failed, using simulation", map[string]interface{}{
+			us.logger.Warn("ccusage JSON parsing failed, marking as unknown", map[string]interface{}{
 				"error":   err.Error(),
 				"out_len": len(output),
 				"output":  truncateOutput(output),
 			})
-			us.simulateUsageData()
-			return us.state, nil
+			us.setUnknownState()
+			return us.state, lib.WrapError(err, lib.ErrCodeCCUsage, "failed to parse ccusage JSON output")
 		}
 
 		today := time.Now().Format("2006-01-02")
 		ccusageOutput, found := findTodayOutput(response, today)
 		if !found {
-			us.logger.Warn("No data found for today", map[string]interface{}{
+			us.logger.Info("No data found for today, setting to $0.00", map[string]interface{}{
 				"today":          today,
 				"availableDates": availableDates(response.Daily),
 			})
-			us.simulateUsageData()
-			return us.state, nil
+			us.setNoDataForToday()
+			return us.state, lib.WrapError(errors.New("no data for today"), lib.ErrCodeCCUsage, "ccusage has no data for today")
 		}
 
 		if ccusageOutput.TotalCost == 0 && ccusageOutput.TotalTokens == 0 {
-			us.logger.Warn("ccusage returned zero values, falling back to simulation", map[string]interface{}{
+			us.logger.Warn("ccusage returned zero values, marking as unknown", map[string]interface{}{
 				"totalTokens": ccusageOutput.TotalTokens,
 				"totalCost":   ccusageOutput.TotalCost,
 				"date":        ccusageOutput.Date,
 			})
-			us.simulateUsageData()
-			return us.state, nil
+			us.setUnknownState()
+			return us.state, lib.WrapError(errors.New("ccusage returned zero values"), lib.ErrCodeCCUsage, "ccusage returned invalid zero values")
 		}
 
 		us.applyUsageData(ccusageOutput)
@@ -268,7 +275,7 @@ func (us *UsageService) performUpdate(maxRetries int) (*models.UsageState, error
 	if lastErr == nil {
 		lastErr = errCCUsageUnavailable
 	}
-	us.state.IsAvailable = false
+	us.setUnknownState()
 	return us.state, lastErr
 }
 
@@ -357,7 +364,11 @@ func (us *UsageService) StartPolling(intervalSeconds int, callback func(*models.
 	us.StopPolling()
 
 	us.updateCallback = callback
+
+	// Create ticker and assign it atomically with mutex protection
+	us.mutex.Lock()
 	us.ticker = time.NewTicker(time.Duration(intervalSeconds) * time.Second)
+	us.mutex.Unlock()
 
 	us.logger.Info("Starting usage polling", map[string]interface{}{
 		"intervalSeconds": intervalSeconds,

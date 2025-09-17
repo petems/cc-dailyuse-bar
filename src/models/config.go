@@ -1,8 +1,9 @@
 package models
 
 import (
-	"errors"
 	"strings"
+
+	"cc-dailyuse-bar/src/lib"
 )
 
 // Config represents the application configuration structure
@@ -12,6 +13,8 @@ type Config struct {
 	YellowThreshold float64 `yaml:"yellow_threshold"`
 	RedThreshold    float64 `yaml:"red_threshold"`
 	DebugLevel      string  `yaml:"debug_level"`
+	CacheWindow     int     `yaml:"cache_window"` // Cache window in seconds
+	CmdTimeout      int     `yaml:"cmd_timeout"`  // Command timeout in seconds
 }
 
 // ConfigDefaults returns a Config struct with default values
@@ -22,6 +25,8 @@ func ConfigDefaults() *Config {
 		YellowThreshold: 10.00,
 		RedThreshold:    20.00,
 		DebugLevel:      "INFO",
+		CacheWindow:     10, // 10 seconds cache window
+		CmdTimeout:      5,  // 5 seconds command timeout
 	}
 }
 
@@ -30,23 +35,23 @@ func ConfigDefaults() *Config {
 func (c *Config) Validate() error {
 	// Validate required fields
 	if c.CCUsagePath == "" {
-		return errors.New("ccusage_path cannot be empty")
+		return lib.ValidationError("ccusage_path cannot be empty")
 	}
 
 	// Validate update interval
 	if c.UpdateInterval < 10 || c.UpdateInterval > 300 {
-		return errors.New("update_interval must be between 10 and 300 seconds")
+		return lib.ValidationError("update_interval must be between 10 and 300 seconds")
 	}
 
 	// Validate thresholds
 	if c.YellowThreshold < 0 {
-		return errors.New("yellow_threshold must be positive")
+		return lib.ValidationError("yellow_threshold must be positive")
 	}
 	if c.RedThreshold < 0 {
-		return errors.New("red_threshold must be positive")
+		return lib.ValidationError("red_threshold must be positive")
 	}
 	if c.RedThreshold <= c.YellowThreshold {
-		return errors.New("red_threshold must be greater than yellow_threshold")
+		return lib.ValidationError("red_threshold must be greater than yellow_threshold")
 	}
 
 	// Validate debug level
@@ -60,7 +65,17 @@ func (c *Config) Validate() error {
 		}
 	}
 	if !valid {
-		return errors.New("debug_level must be one of: DEBUG, INFO, WARN, ERROR, FATAL")
+		return lib.ValidationError("debug_level must be one of: DEBUG, INFO, WARN, ERROR, FATAL")
+	}
+
+	// Validate cache window
+	if c.CacheWindow < 1 || c.CacheWindow > 300 {
+		return lib.ValidationError("cache_window must be between 1 and 300 seconds")
+	}
+
+	// Validate command timeout
+	if c.CmdTimeout < 1 || c.CmdTimeout > 60 {
+		return lib.ValidationError("cmd_timeout must be between 1 and 60 seconds")
 	}
 
 	return nil

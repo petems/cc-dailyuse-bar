@@ -3,6 +3,7 @@ package services
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -69,6 +70,8 @@ func TestConfigService_Load_ExistingFile(t *testing.T) {
 		YellowThreshold: 5.0,
 		RedThreshold:    10.0,
 		DebugLevel:      "DEBUG",
+		CacheWindow:     15,
+		CmdTimeout:      8,
 	}
 
 	// Save it
@@ -103,14 +106,11 @@ func TestConfigService_Load_InvalidYAML(t *testing.T) {
 	err = os.WriteFile(configPath, []byte("invalid: yaml: content: ["), 0644)
 	require.NoError(t, err)
 
-	// Load should return defaults
+	// Load should return error for invalid YAML
 	config, err := service.Load()
-	require.NoError(t, err)
-
-	// Should return defaults
-	defaults := models.ConfigDefaults()
-	assert.Equal(t, defaults.CCUsagePath, config.CCUsagePath)
-	assert.Equal(t, defaults.UpdateInterval, config.UpdateInterval)
+	require.Error(t, err)
+	assert.Nil(t, config)
+	assert.Contains(t, err.Error(), "yaml:")
 }
 
 func TestConfigService_Load_InvalidConfig(t *testing.T) {
@@ -130,22 +130,20 @@ func TestConfigService_Load_InvalidConfig(t *testing.T) {
 	// Write invalid config (negative update interval)
 	invalidYAML := `ccusage_path: "ccusage"
 update_interval: -10
-display_format: "Test"
 yellow_threshold: 5.0
 red_threshold: 10.0
-debug_level: "INFO"`
+debug_level: "INFO"
+cache_window: 10
+cmd_timeout: 5`
 
 	err = os.WriteFile(configPath, []byte(invalidYAML), 0644)
 	require.NoError(t, err)
 
-	// Load should return defaults
+	// Load should return error for invalid config
 	config, err := service.Load()
-	require.NoError(t, err)
-
-	// Should return defaults
-	defaults := models.ConfigDefaults()
-	assert.Equal(t, defaults.CCUsagePath, config.CCUsagePath)
-	assert.Equal(t, defaults.UpdateInterval, config.UpdateInterval)
+	require.Error(t, err)
+	assert.Nil(t, config)
+	assert.Contains(t, err.Error(), "update_interval")
 }
 
 func TestConfigService_Save_ValidConfig(t *testing.T) {
@@ -163,6 +161,8 @@ func TestConfigService_Save_ValidConfig(t *testing.T) {
 		YellowThreshold: 8.0,
 		RedThreshold:    15.0,
 		DebugLevel:      "DEBUG",
+		CacheWindow:     20,
+		CmdTimeout:      10,
 	}
 
 	err := service.Save(config)
@@ -297,6 +297,8 @@ func TestConfigService_RoundTrip(t *testing.T) {
 			YellowThreshold: 5.0,
 			RedThreshold:    10.0,
 			DebugLevel:      "DEBUG",
+			CacheWindow:     25,
+			CmdTimeout:      12,
 		},
 		{
 			CCUsagePath:     "ccusage",
@@ -304,6 +306,8 @@ func TestConfigService_RoundTrip(t *testing.T) {
 			YellowThreshold: 0.1,
 			RedThreshold:    0.2,
 			DebugLevel:      "WARN",
+			CacheWindow:     5,
+			CmdTimeout:      3,
 		},
 	}
 
@@ -345,13 +349,15 @@ func TestConfigService_Load_ReadPermissionError(t *testing.T) {
 	err = os.WriteFile(configPath, []byte("ccusage_path: test"), 0000)
 	require.NoError(t, err)
 
-	// Load should return defaults (graceful degradation)
+	// Load should return error for permission issues
 	config, err := service.Load()
-	require.NoError(t, err)
-
-	// Should return defaults
-	defaults := models.ConfigDefaults()
-	assert.Equal(t, defaults.CCUsagePath, config.CCUsagePath)
+	require.Error(t, err)
+	assert.Nil(t, config)
+	// Error should be related to permission denied or validation failure
+	// (depending on whether the file can be read or not)
+	assert.True(t, strings.Contains(err.Error(), "permission denied") ||
+		strings.Contains(err.Error(), "update_interval") ||
+		strings.Contains(err.Error(), "cache_window"))
 }
 
 func TestConfigService_Save_WritePermissionError(t *testing.T) {
@@ -416,6 +422,8 @@ func TestConfigService_ConcurrentAccess(t *testing.T) {
 				YellowThreshold: 5.0,
 				RedThreshold:    10.0,
 				DebugLevel:      "INFO",
+				CacheWindow:     10,
+				CmdTimeout:      5,
 			}
 
 			err := service.Save(config)

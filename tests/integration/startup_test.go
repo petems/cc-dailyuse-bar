@@ -46,11 +46,7 @@ func TestApplicationStartup(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Step 3: Initialize usage service with config
-	usageService := services.NewUsageService()
-	err = usageService.SetCCUsagePath(config.CCUsagePath)
-	if err != nil {
-		t.Logf("ccusage not available at default path (expected in test environment): %v", err)
-	}
+	_ = services.NewUsageService(config)
 
 	// Assert - Configuration should be persisted
 	configPath := configService.GetConfigPath()

@@ -39,7 +39,8 @@ func TestCompleteUserWorkflow(t *testing.T) {
 	t.Run("FirstStartup", func(t *testing.T) {
 		// Initialize services
 		configService := &services.ConfigService{}
-		usageService := services.NewUsageService()
+		config := models.ConfigDefaults()
+		usageService := services.NewUsageService(config)
 
 		// Load configuration (should create defaults)
 		config, err := configService.Load()
@@ -93,7 +94,8 @@ func TestCompleteUserWorkflow(t *testing.T) {
 	// Step 3: Daily monitoring (service-only)
 	t.Run("DailyMonitoring", func(t *testing.T) {
 		configService := &services.ConfigService{}
-		usageService := services.NewUsageService()
+		config := models.ConfigDefaults()
+		usageService := services.NewUsageService(config)
 
 		// Load configuration
 		config, err := configService.Load()
@@ -135,7 +137,8 @@ func TestCompleteUserWorkflow(t *testing.T) {
 
 	// Step 4: Daily reset simulation
 	t.Run("DailyReset", func(t *testing.T) {
-		usageService := services.NewUsageService()
+		config := models.ConfigDefaults()
+		usageService := services.NewUsageService(config)
 
 		// Reset daily usage
 		err := usageService.ResetDaily()
@@ -151,7 +154,7 @@ func TestCompleteUserWorkflow(t *testing.T) {
 		// After reset, should get fresh data from ccusage
 		assert.GreaterOrEqual(t, usage.DailyCount, 0)
 		assert.GreaterOrEqual(t, usage.DailyCost, 0.0)
-		assert.Contains(t, []models.AlertStatus{models.Green, models.Yellow, models.Red}, usage.Status)
+		assert.Contains(t, []models.AlertStatus{models.Green, models.Yellow, models.Red, models.Unknown}, usage.Status)
 	})
 
 	// Step 5: Application shutdown (no-op without GUI)
@@ -207,7 +210,8 @@ func TestUserErrorScenarios(t *testing.T) {
 	})
 
 	t.Run("MissingCCUsageRecovery", func(t *testing.T) {
-		usageService := services.NewUsageService()
+		config := models.ConfigDefaults()
+		usageService := services.NewUsageService(config)
 
 		// Set invalid ccusage path
 		err := usageService.SetCCUsagePath("/nonexistent/ccusage")

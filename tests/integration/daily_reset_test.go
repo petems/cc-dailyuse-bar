@@ -20,7 +20,8 @@ import (
 
 func TestDailyReset(t *testing.T) {
 	// Arrange
-	usageService := services.NewUsageService()
+	config := models.ConfigDefaults()
+	usageService := services.NewUsageService(config)
 
 	// Act - Simulate getting initial usage (may have data from previous runs)
 	initialUsage, err := usageService.GetDailyUsage()
@@ -54,7 +55,8 @@ func TestMidnightDetection(t *testing.T) {
 	// In a real implementation, this would involve time-based triggers
 
 	// Arrange
-	usageService := services.NewUsageService()
+	config := models.ConfigDefaults()
+	usageService := services.NewUsageService(config)
 
 	// Get current usage state
 	usage, err := usageService.GetDailyUsage()
@@ -81,7 +83,8 @@ func TestResetPreservesConfiguration(t *testing.T) {
 	// Arrange - Set up custom configuration
 	_ = "/tmp/cc-dailyuse-bar-reset-test"
 	configService := &services.ConfigService{}
-	usageService := services.NewUsageService()
+	config := models.ConfigDefaults()
+	usageService := services.NewUsageService(config)
 
 	// Load original config
 	originalConfig, err := configService.Load()
@@ -113,7 +116,8 @@ func TestMultipleResets(t *testing.T) {
 	// Test that multiple resets in succession work correctly
 
 	// Arrange
-	usageService := services.NewUsageService()
+	config := models.ConfigDefaults()
+	usageService := services.NewUsageService(config)
 
 	resetTimes := make([]time.Time, 3)
 
@@ -134,7 +138,7 @@ func TestMultipleResets(t *testing.T) {
 		// Assert after each reset - should get fresh data from ccusage
 		assert.GreaterOrEqual(t, usage.DailyCount, 0, "Count should be valid after reset %d", i+1)
 		assert.GreaterOrEqual(t, usage.DailyCost, 0.0, "Cost should be valid after reset %d", i+1)
-		assert.Contains(t, []models.AlertStatus{models.Green, models.Yellow, models.Red}, usage.Status, "Status should be valid after reset %d", i+1)
+		assert.Contains(t, []models.AlertStatus{models.Green, models.Yellow, models.Red, models.Unknown}, usage.Status, "Status should be valid after reset %d", i+1)
 
 		// Small delay to ensure different timestamps
 		time.Sleep(10 * time.Millisecond)
@@ -152,7 +156,8 @@ func TestResetWithThresholds(t *testing.T) {
 
 	// Arrange
 	configService := &services.ConfigService{}
-	usageService := services.NewUsageService()
+	config := models.ConfigDefaults()
+	usageService := services.NewUsageService(config)
 
 	// Create mock ccusage script that returns zero usage
 	tempDir := t.TempDir()
@@ -173,7 +178,7 @@ func TestResetWithThresholds(t *testing.T) {
 	require.NoError(t, err)
 
 	// Load config to get thresholds
-	config, err := configService.Load()
+	config, err = configService.Load()
 	if err != nil {
 		t.Skipf("Cannot test thresholds without config service: %v", err)
 	}

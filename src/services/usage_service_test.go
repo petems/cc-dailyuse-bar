@@ -14,8 +14,15 @@ import (
 	"cc-dailyuse-bar/src/models"
 )
 
+// Helper function to create a usage service with default config
+func newTestUsageService() *UsageService {
+	config := models.ConfigDefaults()
+	return NewUsageService(config)
+}
+
 func TestNewUsageService(t *testing.T) {
-	service := NewUsageService()
+	config := models.ConfigDefaults()
+	service := NewUsageService(config)
 
 	assert.NotNil(t, service)
 	assert.Equal(t, "ccusage", service.ccusagePath)
@@ -23,11 +30,12 @@ func TestNewUsageService(t *testing.T) {
 	assert.NotNil(t, service.logger)
 	// Logger component is not exported, so we can't test it directly
 	assert.Equal(t, 10*time.Second, service.cacheWindow)
+	assert.Equal(t, 5*time.Second, service.cmdTimeout)
 	assert.NotNil(t, service.pollStopChan)
 }
 
 func TestUsageService_IsAvailable(t *testing.T) {
-	service := NewUsageService()
+	service := newTestUsageService()
 
 	// Test with default path (should be available if ccusage is in PATH)
 	available := service.IsAvailable()
@@ -48,7 +56,7 @@ func TestUsageService_IsAvailable(t *testing.T) {
 }
 
 func TestUsageService_SetCCUsagePath(t *testing.T) {
-	service := NewUsageService()
+	service := newTestUsageService()
 
 	// Test with empty path
 	err := service.SetCCUsagePath("")
@@ -74,7 +82,7 @@ func TestUsageService_SetCCUsagePath(t *testing.T) {
 }
 
 func TestUsageService_ResetDaily(t *testing.T) {
-	service := NewUsageService()
+	service := newTestUsageService()
 
 	// Set some data
 	service.state.DailyCount = 100
@@ -96,7 +104,7 @@ func TestUsageService_ResetDaily(t *testing.T) {
 }
 
 func TestUsageService_SetThresholds(t *testing.T) {
-	service := NewUsageService()
+	service := newTestUsageService()
 
 	// Set some cost
 	service.state.DailyCost = 15.0
@@ -115,25 +123,36 @@ func TestUsageService_SetThresholds(t *testing.T) {
 	assert.Equal(t, models.Red, service.state.Status)
 }
 
-func TestUsageService_SimulateUsageData(t *testing.T) {
-	service := NewUsageService()
+func TestUsageService_SetUnknownState(t *testing.T) {
+	service := newTestUsageService()
 
-	// Call simulateUsageData
-	service.simulateUsageData()
+	// Call setUnknownState
+	service.setUnknownState()
 
-	// Verify simulation data
-	assert.GreaterOrEqual(t, service.state.DailyCount, 0)
-	assert.GreaterOrEqual(t, service.state.DailyCost, 0.0)
-	assert.True(t, service.state.IsAvailable)
+	// Verify unknown state
+	assert.Equal(t, 0, service.state.DailyCount)
+	assert.Equal(t, 0.0, service.state.DailyCost)
+	assert.False(t, service.state.IsAvailable)
+	assert.Equal(t, models.Unknown, service.state.Status)
 	assert.False(t, service.state.LastUpdate.IsZero())
+}
 
-	// Cost should be proportional to count
-	expectedCost := float64(service.state.DailyCount) * 0.05
-	assert.Equal(t, expectedCost, service.state.DailyCost)
+func TestUsageService_SetNoDataForToday(t *testing.T) {
+	service := newTestUsageService()
+
+	// Call setNoDataForToday
+	service.setNoDataForToday()
+
+	// Verify no data for today state
+	assert.Equal(t, 0, service.state.DailyCount)
+	assert.Equal(t, 0.0, service.state.DailyCost)
+	assert.True(t, service.state.IsAvailable)  // ccusage works, just no data today
+	assert.Equal(t, models.Green, service.state.Status) // $0.00 = Green
+	assert.False(t, service.state.LastUpdate.IsZero())
 }
 
 func TestUsageService_UpdateUsage_NotAvailable(t *testing.T) {
-	service := NewUsageService()
+	service := newTestUsageService()
 	service.ccusagePath = "/non/existent/path"
 
 	state, err := service.UpdateUsage()
@@ -144,7 +163,7 @@ func TestUsageService_UpdateUsage_NotAvailable(t *testing.T) {
 }
 
 func TestUsageService_GetDailyUsage_Cache(t *testing.T) {
-	service := NewUsageService()
+	service := newTestUsageService()
 
 	// Set up some state
 	service.state.DailyCount = 50
@@ -162,7 +181,7 @@ func TestUsageService_GetDailyUsage_Cache(t *testing.T) {
 }
 
 func TestUsageService_GetDailyUsage_CacheExpired(t *testing.T) {
-	service := NewUsageService()
+	service := newTestUsageService()
 
 	// Set up some state with old timestamp
 	service.state.DailyCount = 50
@@ -181,7 +200,7 @@ func TestUsageService_GetDailyUsage_CacheExpired(t *testing.T) {
 }
 
 func TestUsageService_StartPolling_InvalidInterval(t *testing.T) {
-	service := NewUsageService()
+	service := newTestUsageService()
 
 	// Test with zero interval
 	err := service.StartPolling(0, nil)
@@ -195,7 +214,7 @@ func TestUsageService_StartPolling_InvalidInterval(t *testing.T) {
 }
 
 func TestUsageService_StartPolling_ValidInterval(t *testing.T) {
-	service := NewUsageService()
+	service := newTestUsageService()
 
 	// Ensure clean state
 	service.StopPolling()
@@ -223,7 +242,7 @@ func TestUsageService_StartPolling_ValidInterval(t *testing.T) {
 }
 
 func TestUsageService_StopPolling(t *testing.T) {
-	service := NewUsageService()
+	service := newTestUsageService()
 
 	// Ensure clean state
 	service.StopPolling()
@@ -240,7 +259,7 @@ func TestUsageService_StopPolling(t *testing.T) {
 }
 
 func TestUsageService_StartDailyResetMonitor(t *testing.T) {
-	service := NewUsageService()
+	service := newTestUsageService()
 
 	// Ensure clean state
 	service.StopPolling()
@@ -260,7 +279,7 @@ func TestUsageService_StartDailyResetMonitor(t *testing.T) {
 }
 
 func TestUsageService_UpdateWithRetry_NotAvailable(t *testing.T) {
-	service := NewUsageService()
+	service := newTestUsageService()
 
 	// Ensure clean state
 	service.StopPolling()
@@ -274,7 +293,7 @@ func TestUsageService_UpdateWithRetry_NotAvailable(t *testing.T) {
 }
 
 func TestUsageService_UpdateWithRetry_CommandFailure(t *testing.T) {
-	service := NewUsageService()
+	service := newTestUsageService()
 
 	// Create a temporary script that always fails
 	tempDir := t.TempDir()
@@ -295,7 +314,7 @@ exit 1`
 }
 
 func TestUsageService_UpdateWithRetry_InvalidJSON(t *testing.T) {
-	service := NewUsageService()
+	service := newTestUsageService()
 
 	// Create a temporary script that returns invalid JSON
 	tempDir := t.TempDir()
@@ -318,7 +337,7 @@ echo "invalid json"`
 }
 
 func TestUsageService_UpdateWithRetry_ValidJSON(t *testing.T) {
-	service := NewUsageService()
+	service := newTestUsageService()
 
 	// Create a temporary script that returns valid JSON
 	tempDir := t.TempDir()
@@ -362,7 +381,7 @@ echo '` + string(jsonData) + `'`
 }
 
 func TestUsageService_UpdateWithRetry_NoDataForToday(t *testing.T) {
-	service := NewUsageService()
+	service := newTestUsageService()
 
 	// Create a temporary script that returns JSON without today's data
 	tempDir := t.TempDir()
@@ -406,7 +425,7 @@ echo '` + string(jsonData) + `'`
 }
 
 func TestUsageService_UpdateWithRetry_ZeroValues(t *testing.T) {
-	service := NewUsageService()
+	service := newTestUsageService()
 
 	// Create a temporary script that returns zero values
 	tempDir := t.TempDir()
@@ -450,7 +469,7 @@ echo '` + string(jsonData) + `'`
 }
 
 func TestUsageService_ConcurrentAccess(t *testing.T) {
-	service := NewUsageService()
+	service := newTestUsageService()
 
 	// Test concurrent access to state
 	done := make(chan bool, 10)
@@ -477,7 +496,7 @@ func TestUsageService_ConcurrentAccess(t *testing.T) {
 }
 
 func TestUsageService_EdgeCases(t *testing.T) {
-	service := NewUsageService()
+	service := newTestUsageService()
 
 	// Test with very large cache window
 	service.cacheWindow = 24 * time.Hour
@@ -505,7 +524,7 @@ func TestUsageService_EdgeCases(t *testing.T) {
 }
 
 func TestUsageService_RealWorldScenarios(t *testing.T) {
-	service := NewUsageService()
+	service := newTestUsageService()
 
 	// Test scenario: ccusage not available
 	service.ccusagePath = "/non/existent/path"
@@ -533,4 +552,70 @@ func TestUsageService_RealWorldScenarios(t *testing.T) {
 	assert.Equal(t, 0, service.state.DailyCount)
 	assert.Equal(t, 0.0, service.state.DailyCost)
 	assert.Equal(t, models.Green, service.state.Status)
+}
+
+func TestUsageService_NoDataForToday(t *testing.T) {
+	service := newTestUsageService()
+
+	// Create a mock ccusage script that returns data, but not for today
+	tempDir := t.TempDir()
+	scriptPath := filepath.Join(tempDir, "no-today-ccusage")
+
+	yesterday := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
+	response := CCUsageResponse{
+		Daily: []CCUsageOutput{
+			{
+				Date:        yesterday,
+				TotalTokens: 100,
+				TotalCost:   5.0,
+			},
+		},
+		Totals: struct {
+			TotalTokens int     `json:"totalTokens"`
+			TotalCost   float64 `json:"totalCost"`
+		}{
+			TotalTokens: 100,
+			TotalCost:   5.0,
+		},
+	}
+
+	jsonData, err := json.Marshal(response)
+	require.NoError(t, err)
+
+	scriptContent := `#!/bin/bash
+echo '` + string(jsonData) + `'`
+
+	err = os.WriteFile(scriptPath, []byte(scriptContent), 0755)
+	require.NoError(t, err)
+
+	service.ccusagePath = scriptPath
+
+	// Act
+	state, err := service.UpdateUsage()
+
+	// Assert - Should show $0.00 for no data today, not Unknown
+	assert.Error(t, err) // Should return error indicating no data for today
+	assert.Contains(t, err.Error(), "no data for today")
+	assert.Equal(t, 0, state.DailyCount)
+	assert.Equal(t, 0.0, state.DailyCost)
+	assert.True(t, state.IsAvailable) // ccusage works, just no data for today
+	assert.NotEqual(t, models.Unknown, state.Status) // Should not be Unknown
+}
+
+func TestUsageService_DataUnavailable(t *testing.T) {
+	service := newTestUsageService()
+
+	// Test scenario: ccusage binary doesn't exist
+	service.ccusagePath = "/non/existent/ccusage/binary"
+
+	// Act
+	state, err := service.UpdateUsage()
+
+	// Assert - Should show Unknown status when ccusage is unavailable
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "not available")
+	assert.Equal(t, 0, state.DailyCount)
+	assert.Equal(t, 0.0, state.DailyCost)
+	assert.False(t, state.IsAvailable) // ccusage itself is unavailable
+	assert.Equal(t, models.Unknown, state.Status) // Should be Unknown
 }

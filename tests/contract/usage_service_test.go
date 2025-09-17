@@ -13,7 +13,8 @@ import (
 
 func TestUsageService_GetDailyUsage(t *testing.T) {
 	// Arrange
-	usageService := services.NewUsageService()
+	config := models.ConfigDefaults()
+	usageService := services.NewUsageService(config)
 
 	// Act
 	usage, err := usageService.GetDailyUsage()
@@ -23,14 +24,15 @@ func TestUsageService_GetDailyUsage(t *testing.T) {
 	assert.NotNil(t, usage)
 	assert.GreaterOrEqual(t, usage.DailyCount, 0)
 	assert.GreaterOrEqual(t, usage.DailyCost, 0.0)
-	assert.Contains(t, []models.AlertStatus{models.Green, models.Yellow, models.Red}, usage.Status)
+	assert.Contains(t, []models.AlertStatus{models.Green, models.Yellow, models.Red, models.Unknown}, usage.Status)
 	assert.False(t, usage.LastUpdate.IsZero())
 	assert.False(t, usage.LastReset.IsZero())
 }
 
 func TestUsageService_UpdateUsage(t *testing.T) {
 	// Arrange
-	usageService := services.NewUsageService()
+	config := models.ConfigDefaults()
+	usageService := services.NewUsageService(config)
 
 	// Act - First call
 	usage1, err := usageService.UpdateUsage()
@@ -49,7 +51,8 @@ func TestUsageService_UpdateUsage(t *testing.T) {
 
 func TestUsageService_ResetDaily(t *testing.T) {
 	// Arrange
-	usageService := services.NewUsageService()
+	config := models.ConfigDefaults()
+	usageService := services.NewUsageService(config)
 
 	// Get initial usage
 	initialUsage, err := usageService.GetDailyUsage()
@@ -75,7 +78,8 @@ func TestUsageService_ResetDaily(t *testing.T) {
 
 func TestUsageService_IsAvailable(t *testing.T) {
 	// Arrange
-	usageService := services.NewUsageService()
+	config := models.ConfigDefaults()
+	usageService := services.NewUsageService(config)
 
 	// Act
 	available := usageService.IsAvailable()
@@ -88,7 +92,8 @@ func TestUsageService_IsAvailable(t *testing.T) {
 
 func TestUsageService_SetCCUsagePath_Valid(t *testing.T) {
 	// Arrange
-	usageService := services.NewUsageService()
+	config := models.ConfigDefaults()
+	usageService := services.NewUsageService(config)
 
 	// Act - Set to a common path that should exist
 	err := usageService.SetCCUsagePath("/bin/sh") // Using sh as a proxy for executable test
@@ -99,7 +104,8 @@ func TestUsageService_SetCCUsagePath_Valid(t *testing.T) {
 
 func TestUsageService_SetCCUsagePath_Invalid(t *testing.T) {
 	// Arrange
-	usageService := services.NewUsageService()
+	config := models.ConfigDefaults()
+	usageService := services.NewUsageService(config)
 
 	testCases := []struct {
 		name string

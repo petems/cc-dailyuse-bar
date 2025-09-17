@@ -26,40 +26,40 @@ func NewConfigService() *ConfigService {
 
 // Load reads configuration from XDG-compliant storage
 // Returns default config if file doesn't exist
-// Returns error only for permission/system issues, not missing files
+// Returns error for permission/system issues, corrupted files, or invalid configurations
 func (cs *ConfigService) Load() (*models.Config, error) {
 	configPath := cs.GetConfigPath()
 
-	// If file doesn't exist, return defaults
+	// Check if file exists
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		defaults := models.ConfigDefaults()
 		// Create the config file with defaults
 		if saveErr := cs.Save(defaults); saveErr != nil {
-			// If we can't save, at least return defaults
+			// Log the save error but still return defaults
+			cs.logger.Warn("Failed to create default config file", map[string]interface{}{
+				"error": saveErr,
+			})
 			return defaults, nil
 		}
 		return defaults, nil
 	}
 
-	// Read the file
+	// Read the file - propagate read errors (permission issues, etc.)
 	data, err := os.ReadFile(configPath)
 	if err != nil {
-		// If we can't read the file, return defaults
-		return models.ConfigDefaults(), nil
+		return nil, err
 	}
 
-	// Parse YAML
+	// Parse YAML - propagate parsing errors (corrupted file)
 	var config models.Config
 	err = yaml.Unmarshal(data, &config)
 	if err != nil {
-		// If YAML is invalid, return defaults
-		return models.ConfigDefaults(), nil
+		return nil, err
 	}
 
-	// Validate the loaded config
+	// Validate the loaded config - propagate validation errors (invalid config)
 	if err := cs.Validate(&config); err != nil {
-		// If config is invalid, return defaults
-		return models.ConfigDefaults(), nil
+		return nil, err
 	}
 
 	return &config, nil

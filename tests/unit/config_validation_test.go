@@ -30,6 +30,8 @@ func TestConfigService_Validate_ValidConfig(t *testing.T) {
 		YellowThreshold: 8.0,
 		RedThreshold:    15.0,
 		DebugLevel:      "INFO",
+		CacheWindow:     10,
+		CmdTimeout:      5,
 	}
 
 	err := service.Validate(config)

@@ -4,9 +4,10 @@ package models
 type AlertStatus int
 
 const (
-	Green  AlertStatus = iota // Usage below yellow threshold
-	Yellow                    // Usage above yellow, below red threshold
-	Red                       // Usage above red threshold
+	Green   AlertStatus = iota // Usage below yellow threshold
+	Yellow                     // Usage above yellow, below red threshold
+	Red                        // Usage above red threshold
+	Unknown                    // Usage data unavailable or invalid
 )
 
 // String returns human-readable alert status
@@ -18,6 +19,8 @@ func (a AlertStatus) String() string {
 		return "High"
 	case Red:
 		return "Critical"
+	case Unknown:
+		return "Unknown"
 	default:
 		return "Unknown"
 	}
@@ -32,6 +35,8 @@ func (a AlertStatus) ToTrayIcon() TrayIcon {
 		return IconYellow
 	case Red:
 		return IconRed
+	case Unknown:
+		return IconOffline
 	default:
 		return IconOffline
 	}
@@ -60,6 +65,8 @@ func (t TrayIcon) FromAlertStatus(status AlertStatus, isAvailable bool) TrayIcon
 		return IconYellow
 	case Red:
 		return IconRed
+	case Unknown:
+		return IconOffline
 	default:
 		return IconOffline
 	}
