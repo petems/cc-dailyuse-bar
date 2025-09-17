@@ -1,6 +1,7 @@
 package services
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 
@@ -15,12 +16,14 @@ import (
 type ConfigService struct {
 	logger     *lib.Logger
 	configPath string // Override for testing
+	readFile   func(string) ([]byte, error)
 }
 
 // NewConfigService creates a new ConfigService instance
 func NewConfigService() *ConfigService {
 	return &ConfigService{
-		logger: lib.NewLogger("config-service"),
+		logger:   lib.NewLogger("config-service"),
+		readFile: os.ReadFile,
 	}
 }
 
@@ -30,23 +33,11 @@ func NewConfigService() *ConfigService {
 func (cs *ConfigService) Load() (*models.Config, error) {
 	configPath := cs.GetConfigPath()
 
-	// Check if file exists
-	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		defaults := models.ConfigDefaults()
-		// Create the config file with defaults
-		if saveErr := cs.Save(defaults); saveErr != nil {
-			// Log the save error but still return defaults
-			cs.logger.Warn("Failed to create default config file", map[string]interface{}{
-				"error": saveErr,
-			})
-			return defaults, nil
-		}
-		return defaults, nil
-	}
-
-	// Read the file - propagate read errors (permission issues, etc.)
-	data, err := os.ReadFile(configPath)
+	data, err := cs.readFile(configPath)
 	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return models.ConfigDefaults(), nil
+		}
 		return nil, err
 	}
 
@@ -63,33 +54,6 @@ func (cs *ConfigService) Load() (*models.Config, error) {
 	}
 
 	return &config, nil
-}
-
-// Save persists configuration to XDG-compliant storage
-// Creates directories if they don't exist
-// Returns error for validation failures or write issues
-func (cs *ConfigService) Save(config *models.Config) error {
-	// Validate first
-	if err := cs.Validate(config); err != nil {
-		return err
-	}
-
-	configPath := cs.GetConfigPath()
-	configDir := filepath.Dir(configPath)
-
-	// Create directory if it doesn't exist
-	if err := os.MkdirAll(configDir, 0755); err != nil {
-		return err
-	}
-
-	// Marshal to YAML
-	data, err := yaml.Marshal(config)
-	if err != nil {
-		return err
-	}
-
-	// Write file with user-only permissions for privacy
-	return os.WriteFile(configPath, data, 0600)
 }
 
 // Validate checks configuration values for correctness
@@ -110,4 +74,13 @@ func (cs *ConfigService) GetConfigPath() string {
 // SetConfigPath sets a custom config path for testing
 func (cs *ConfigService) SetConfigPath(path string) {
 	cs.configPath = path
+}
+
+// SetReadFile allows tests to override the file reader logic.
+func (cs *ConfigService) SetReadFile(reader func(string) ([]byte, error)) {
+	if reader == nil {
+		cs.readFile = os.ReadFile
+		return
+	}
+	cs.readFile = reader
 }

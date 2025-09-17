@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"cc-dailyuse-bar/tests/testhelpers"
+	"cc-dailyuse-bar/src/internal/testhelpers"
 )
 
 func TestMain(m *testing.M) {

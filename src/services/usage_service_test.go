@@ -146,7 +146,7 @@ func TestUsageService_SetNoDataForToday(t *testing.T) {
 	// Verify no data for today state
 	assert.Equal(t, 0, service.state.DailyCount)
 	assert.Equal(t, 0.0, service.state.DailyCost)
-	assert.True(t, service.state.IsAvailable)  // ccusage works, just no data today
+	assert.True(t, service.state.IsAvailable)           // ccusage works, just no data today
 	assert.Equal(t, models.Green, service.state.Status) // $0.00 = Green
 	assert.False(t, service.state.LastUpdate.IsZero())
 }
@@ -330,10 +330,9 @@ echo "invalid json"`
 
 	state, err := service.updateWithRetry(1)
 
-	// Should fall back to simulation
-	require.NoError(t, err)
-	assert.True(t, state.IsAvailable)
-	assert.GreaterOrEqual(t, state.DailyCount, 0)
+	require.Error(t, err)
+	assert.False(t, state.IsAvailable)
+	assert.Equal(t, models.Unknown, state.Status)
 }
 
 func TestUsageService_UpdateWithRetry_ValidJSON(t *testing.T) {
@@ -418,10 +417,11 @@ echo '` + string(jsonData) + `'`
 
 	state, err := service.updateWithRetry(1)
 
-	// Should fall back to simulation
-	require.NoError(t, err)
+	require.Error(t, err)
 	assert.True(t, state.IsAvailable)
-	assert.GreaterOrEqual(t, state.DailyCount, 0)
+	assert.Equal(t, 0, state.DailyCount)
+	assert.Equal(t, 0.0, state.DailyCost)
+	assert.Equal(t, models.Green, state.Status)
 }
 
 func TestUsageService_UpdateWithRetry_ZeroValues(t *testing.T) {
@@ -462,10 +462,9 @@ echo '` + string(jsonData) + `'`
 
 	state, err := service.updateWithRetry(1)
 
-	// Should fall back to simulation
-	require.NoError(t, err)
-	assert.True(t, state.IsAvailable)
-	assert.GreaterOrEqual(t, state.DailyCount, 0)
+	require.Error(t, err)
+	assert.False(t, state.IsAvailable)
+	assert.Equal(t, models.Unknown, state.Status)
 }
 
 func TestUsageService_ConcurrentAccess(t *testing.T) {
@@ -598,7 +597,7 @@ echo '` + string(jsonData) + `'`
 	assert.Contains(t, err.Error(), "no data for today")
 	assert.Equal(t, 0, state.DailyCount)
 	assert.Equal(t, 0.0, state.DailyCost)
-	assert.True(t, state.IsAvailable) // ccusage works, just no data for today
+	assert.True(t, state.IsAvailable)                // ccusage works, just no data for today
 	assert.NotEqual(t, models.Unknown, state.Status) // Should not be Unknown
 }
 
@@ -616,6 +615,6 @@ func TestUsageService_DataUnavailable(t *testing.T) {
 	assert.Contains(t, err.Error(), "not available")
 	assert.Equal(t, 0, state.DailyCount)
 	assert.Equal(t, 0.0, state.DailyCost)
-	assert.False(t, state.IsAvailable) // ccusage itself is unavailable
+	assert.False(t, state.IsAvailable)            // ccusage itself is unavailable
 	assert.Equal(t, models.Unknown, state.Status) // Should be Unknown
 }
