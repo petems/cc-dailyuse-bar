@@ -114,13 +114,8 @@ func (us *UsageService) setUnknownState() {
 }
 
 func (us *UsageService) setUnknownStateLocked() {
-	now := time.Now()
-	us.state.DailyCount = 0
-	us.state.DailyCost = 0.0
-	us.state.LastUpdate = now
-	us.state.IsAvailable = false
+	us.setStateMetricsLocked(0, 0, false)
 	us.state.Status = models.Unknown
-	us.lastQuery = now
 }
 
 // setNoDataForToday sets state for when ccusage works but has no data for today
@@ -131,12 +126,16 @@ func (us *UsageService) setNoDataForToday() {
 }
 
 func (us *UsageService) setNoDataForTodayLocked() {
-	now := time.Now()
-	us.state.DailyCount = 0
-	us.state.DailyCost = 0.0
-	us.state.LastUpdate = now
-	us.state.IsAvailable = true    // ccusage itself works
+	us.setStateMetricsLocked(0, 0, true)
 	us.state.Status = models.Green // $0.00 is Green status
+}
+
+func (us *UsageService) setStateMetricsLocked(tokens int, cost float64, available bool) {
+	now := time.Now()
+	us.state.DailyCount = tokens
+	us.state.DailyCost = cost
+	us.state.LastUpdate = now
+	us.state.IsAvailable = available
 	us.lastQuery = now
 }
 
@@ -375,12 +374,7 @@ func (us *UsageService) applyUsageData(output CCUsageOutput) {
 }
 
 func (us *UsageService) applyUsageDataLocked(output CCUsageOutput) {
-	now := time.Now()
-	us.state.DailyCount = output.TotalTokens
-	us.state.DailyCost = output.TotalCost
-	us.state.LastUpdate = now
-	us.state.IsAvailable = true
-	us.lastQuery = now
+	us.setStateMetricsLocked(output.TotalTokens, output.TotalCost, true)
 }
 
 func (us *UsageService) logCommandFailure(err error, output []byte, extra map[string]interface{}) {
