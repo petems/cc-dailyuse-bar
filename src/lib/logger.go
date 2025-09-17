@@ -3,8 +3,10 @@ package lib
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"os"
+	"sync"
 	"time"
 )
 
@@ -41,6 +43,7 @@ func (l LogLevel) String() string {
 type Logger struct {
 	component string
 	level     LogLevel
+	writer    io.Writer
 }
 
 // LogEntry represents a structured log entry
@@ -57,12 +60,41 @@ func NewLogger(component string) *Logger {
 	return &Logger{
 		component: component,
 		level:     INFO,
+		writer:    getDefaultWriter(),
 	}
+}
+
+var (
+	defaultWriter    io.Writer = os.Stderr
+	defaultWriterMux sync.RWMutex
+)
+
+func getDefaultWriter() io.Writer {
+	defaultWriterMux.RLock()
+	defer defaultWriterMux.RUnlock()
+	return defaultWriter
+}
+
+func setDefaultWriter(writer io.Writer) {
+	if writer == nil {
+		writer = io.Discard
+	}
+	defaultWriterMux.Lock()
+	defer defaultWriterMux.Unlock()
+	defaultWriter = writer
 }
 
 // SetLevel sets the minimum log level
 func (l *Logger) SetLevel(level LogLevel) {
 	l.level = level
+}
+
+// SetOutput sets the destination writer for this logger instance
+func (l *Logger) SetOutput(writer io.Writer) {
+	if writer == nil {
+		writer = io.Discard
+	}
+	l.writer = writer
 }
 
 // Debug logs a debug message with optional context
@@ -123,8 +155,12 @@ func (l *Logger) log(level LogLevel, message string, context ...map[string]inter
 		return
 	}
 
-	// Write to stderr for structured logging
-	fmt.Fprintln(os.Stderr, string(jsonData))
+	// Write to configured destination for structured logging
+	writer := l.writer
+	if writer == nil {
+		writer = getDefaultWriter()
+	}
+	fmt.Fprintln(writer, string(jsonData))
 }
 
 // WithContext creates a convenience function for logging with common context
@@ -140,6 +176,12 @@ var globalLogger = NewLogger("cc-dailyuse-bar")
 // SetGlobalLevel sets the global logger level
 func SetGlobalLevel(level LogLevel) {
 	globalLogger.SetLevel(level)
+}
+
+// SetGlobalOutput sets the output writer for global logging and future loggers
+func SetGlobalOutput(writer io.Writer) {
+	setDefaultWriter(writer)
+	globalLogger.SetOutput(writer)
 }
 
 // Debug logs using the global logger

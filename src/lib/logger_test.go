@@ -2,6 +2,7 @@ package lib
 
 import (
 	"encoding/json"
+	"io"
 	"os"
 	"strings"
 	"testing"
@@ -47,43 +48,36 @@ func TestLogger_SetLevel(t *testing.T) {
 }
 
 func TestLogger_LogLevels(t *testing.T) {
-	// Capture stderr to test log output
-	originalStderr := os.Stderr
-	r, w, _ := os.Pipe()
-	os.Stderr = w
-
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
 	logger := NewLogger("test-component")
 	logger.SetLevel(DEBUG)
+	logger.SetOutput(w)
 
-	// Test all log levels
 	logger.Debug("debug message", map[string]interface{}{"key": "value"})
 	logger.Info("info message", map[string]interface{}{"key": "value"})
 	logger.Warn("warn message", map[string]interface{}{"key": "value"})
 	logger.Error("error message", map[string]interface{}{"key": "value"})
 
-	// Close write end and restore stderr
-	w.Close()
-	os.Stderr = originalStderr
-
-	// Read captured output
-	buf := make([]byte, 4096)
-	n, _ := r.Read(buf)
-	output := string(buf[:n])
+	require.NoError(t, w.Close())
+	logger.SetOutput(os.Stderr)
+	output, err := io.ReadAll(r)
+	require.NoError(t, err)
 
 	// Verify all log levels are present
-	assert.Contains(t, output, "debug message")
-	assert.Contains(t, output, "info message")
-	assert.Contains(t, output, "warn message")
-	assert.Contains(t, output, "error message")
+	assert.Contains(t, string(output), "debug message")
+	assert.Contains(t, string(output), "info message")
+	assert.Contains(t, string(output), "warn message")
+	assert.Contains(t, string(output), "error message")
 
 	// Verify JSON structure
-	lines := strings.Split(strings.TrimSpace(output), "\n")
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
 	for _, line := range lines {
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
 		var entry LogEntry
-		err := json.Unmarshal([]byte(line), &entry)
+		err = json.Unmarshal([]byte(line), &entry)
 		assert.NoError(t, err, "Log entry should be valid JSON: %s", line)
 		assert.Equal(t, "test-component", entry.Component)
 		assert.NotEmpty(t, entry.Timestamp)
@@ -93,41 +87,35 @@ func TestLogger_LogLevels(t *testing.T) {
 }
 
 func TestLogger_LogLevelFiltering(t *testing.T) {
-	// Capture stderr
-	originalStderr := os.Stderr
-	r, w, _ := os.Pipe()
-	os.Stderr = w
-
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
 	logger := NewLogger("test")
-	logger.SetLevel(WARN) // Only WARN and above should be logged
+	logger.SetLevel(WARN)
+	logger.SetOutput(w)
 
 	logger.Debug("debug message")
 	logger.Info("info message")
 	logger.Warn("warn message")
 	logger.Error("error message")
 
-	w.Close()
-	os.Stderr = originalStderr
-
-	buf := make([]byte, 4096)
-	n, _ := r.Read(buf)
-	output := string(buf[:n])
+	require.NoError(t, w.Close())
+	logger.SetOutput(os.Stderr)
+	output, err := io.ReadAll(r)
+	require.NoError(t, err)
 
 	// Only WARN and ERROR should be present
-	assert.NotContains(t, output, "debug message")
-	assert.NotContains(t, output, "info message")
-	assert.Contains(t, output, "warn message")
-	assert.Contains(t, output, "error message")
+	assert.NotContains(t, string(output), "debug message")
+	assert.NotContains(t, string(output), "info message")
+	assert.Contains(t, string(output), "warn message")
+	assert.Contains(t, string(output), "error message")
 }
 
 func TestLogger_ContextHandling(t *testing.T) {
-	// Capture stderr
-	originalStderr := os.Stderr
-	r, w, _ := os.Pipe()
-	os.Stderr = w
-
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
 	logger := NewLogger("test")
 	logger.SetLevel(INFO)
+	logger.SetOutput(w)
 
 	// Test single context
 	logger.Info("message", map[string]interface{}{"key1": "value1"})
@@ -141,18 +129,16 @@ func TestLogger_ContextHandling(t *testing.T) {
 	// Test no context
 	logger.Info("message")
 
-	w.Close()
-	os.Stderr = originalStderr
+	require.NoError(t, w.Close())
+	logger.SetOutput(os.Stderr)
+	output, err := io.ReadAll(r)
+	require.NoError(t, err)
 
-	buf := make([]byte, 4096)
-	n, _ := r.Read(buf)
-	output := string(buf[:n])
-
-	lines := strings.Split(strings.TrimSpace(output), "\n")
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
 
 	// First line should have context
 	var entry1 LogEntry
-	err := json.Unmarshal([]byte(lines[0]), &entry1)
+	err = json.Unmarshal([]byte(lines[0]), &entry1)
 	require.NoError(t, err)
 	assert.Equal(t, "value1", entry1.Context["key1"])
 
@@ -171,13 +157,11 @@ func TestLogger_ContextHandling(t *testing.T) {
 }
 
 func TestLogger_WithContext(t *testing.T) {
-	// Capture stderr
-	originalStderr := os.Stderr
-	r, w, _ := os.Pipe()
-	os.Stderr = w
-
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
 	logger := NewLogger("test")
 	logger.SetLevel(INFO)
+	logger.SetOutput(w)
 
 	contextLogger := logger.WithContext(map[string]interface{}{
 		"user":   "testuser",
@@ -186,15 +170,13 @@ func TestLogger_WithContext(t *testing.T) {
 
 	contextLogger(INFO, "contextual message")
 
-	w.Close()
-	os.Stderr = originalStderr
-
-	buf := make([]byte, 4096)
-	n, _ := r.Read(buf)
-	output := string(buf[:n])
+	require.NoError(t, w.Close())
+	logger.SetOutput(os.Stderr)
+	output, err := io.ReadAll(r)
+	require.NoError(t, err)
 
 	var entry LogEntry
-	err := json.Unmarshal([]byte(strings.TrimSpace(output)), &entry)
+	err = json.Unmarshal([]byte(strings.TrimSpace(string(output))), &entry)
 	require.NoError(t, err)
 	assert.Equal(t, "testuser", entry.Context["user"])
 	assert.Equal(t, "test", entry.Context["action"])
@@ -204,32 +186,28 @@ func TestLogger_WithContext(t *testing.T) {
 func TestGlobalLogger(t *testing.T) {
 	// Test global logger functions
 	SetGlobalLevel(DEBUG)
-
-	// Capture stderr
-	originalStderr := os.Stderr
-	r, w, _ := os.Pipe()
-	os.Stderr = w
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+	SetGlobalOutput(w)
 
 	Debug("global debug message")
 	Info("global info message")
 	Warn("global warn message")
 	Error("global error message")
 
-	w.Close()
-	os.Stderr = originalStderr
-
-	buf := make([]byte, 4096)
-	n, _ := r.Read(buf)
-	output := string(buf[:n])
+	require.NoError(t, w.Close())
+	SetGlobalOutput(os.Stderr)
+	output, err := io.ReadAll(r)
+	require.NoError(t, err)
 
 	// Verify global logger works
-	assert.Contains(t, output, "global debug message")
-	assert.Contains(t, output, "global info message")
-	assert.Contains(t, output, "global warn message")
-	assert.Contains(t, output, "global error message")
+	assert.Contains(t, string(output), "global debug message")
+	assert.Contains(t, string(output), "global info message")
+	assert.Contains(t, string(output), "global warn message")
+	assert.Contains(t, string(output), "global error message")
 
 	// Verify component is set correctly
-	lines := strings.Split(strings.TrimSpace(output), "\n")
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
 	for _, line := range lines {
 		if strings.TrimSpace(line) == "" {
 			continue
