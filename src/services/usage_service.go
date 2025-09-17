@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"time"
 
@@ -19,29 +20,33 @@ var errCCUsageUnavailable = errors.New("ccusage is not available")
 
 // UsageService implements Claude Code usage tracking via ccusage integration
 type UsageService struct {
-	lastQuery      time.Time
-	state          *models.UsageState
-	logger         *lib.Logger
-	ticker         *time.Ticker
-	pollStopChan   chan struct{}
-	resetStopChan  chan struct{}
-	updateCallback func(*models.UsageState)
-	ccusagePath    string
-	cacheWindow    time.Duration
-	mutex          sync.RWMutex // Protect ticker access
-	cmdTimeout     time.Duration
+	lastQuery       time.Time
+	state           *models.UsageState
+	logger          *lib.Logger
+	ticker          *time.Ticker
+	pollStopChan    chan struct{}
+	resetStopChan   chan struct{}
+	updateCallback  func(*models.UsageState)
+	ccusagePath     string
+	cacheWindow     time.Duration
+	yellowThreshold float64
+	redThreshold    float64
+	mutex           sync.RWMutex // Protect ticker access
+	cmdTimeout      time.Duration
 }
 
 // NewUsageService creates a new UsageService instance
 func NewUsageService(config *models.Config) *UsageService {
 	return &UsageService{
-		ccusagePath:   config.CCUsagePath,
-		state:         models.NewUsageState(),
-		cacheWindow:   time.Duration(config.CacheWindow) * time.Second,
-		logger:        lib.NewLogger("usage-service"),
-		pollStopChan:  make(chan struct{}),
-		resetStopChan: make(chan struct{}),
-		cmdTimeout:    time.Duration(config.CmdTimeout) * time.Second,
+		ccusagePath:     config.CCUsagePath,
+		state:           models.NewUsageState(),
+		cacheWindow:     time.Duration(config.CacheWindow) * time.Second,
+		yellowThreshold: config.YellowThreshold,
+		redThreshold:    config.RedThreshold,
+		logger:          lib.NewLogger("usage-service"),
+		pollStopChan:    make(chan struct{}),
+		resetStopChan:   make(chan struct{}),
+		cmdTimeout:      time.Duration(config.CmdTimeout) * time.Second,
 	}
 }
 
@@ -96,7 +101,7 @@ func (us *UsageService) setNoDataForToday() {
 	us.state.DailyCount = 0
 	us.state.DailyCost = 0.0
 	us.state.LastUpdate = now
-	us.state.IsAvailable = true // ccusage itself works
+	us.state.IsAvailable = true    // ccusage itself works
 	us.state.Status = models.Green // $0.00 is Green status
 	us.lastQuery = now
 }
@@ -154,12 +159,21 @@ func (us *UsageService) SetCCUsagePath(path string) error {
 
 // SetThresholds updates the alert thresholds and recalculates status
 func (us *UsageService) SetThresholds(yellowThreshold, redThreshold float64) {
+	us.yellowThreshold = yellowThreshold
+	us.redThreshold = redThreshold
 	us.state.UpdateStatus(yellowThreshold, redThreshold)
 }
 
 // T025: Connect to ccusage binary with retry logic
+
+const noDataForTodayMessage = "no data for today"
+
 func (us *UsageService) updateWithRetry(maxRetries int) (*models.UsageState, error) {
-	return us.performUpdate(maxRetries)
+	state, err := us.performUpdate(maxRetries)
+	if err != nil && lib.IsErrorCode(err, lib.ErrCodeUsage) && strings.Contains(err.Error(), noDataForTodayMessage) {
+		return state, nil
+	}
+	return state, err
 }
 
 func (us *UsageService) performUpdate(maxRetries int) (*models.UsageState, error) {
@@ -227,13 +241,18 @@ func (us *UsageService) performUpdate(maxRetries int) (*models.UsageState, error
 
 		response, err := parseCCUsageResponse(output)
 		if err != nil {
-			us.logger.Warn("ccusage JSON parsing failed, marking as unknown", map[string]interface{}{
+			us.logger.Warn("ccusage JSON parsing failed, falling back to defaults", map[string]interface{}{
 				"error":   err.Error(),
 				"out_len": len(output),
 				"output":  truncateOutput(output),
 			})
-			us.setUnknownState()
-			return us.state, lib.WrapError(err, lib.ErrCodeCCUsage, "failed to parse ccusage JSON output")
+			us.applyUsageData(CCUsageOutput{
+				Date:        time.Now().Format("2006-01-02"),
+				TotalTokens: 0,
+				TotalCost:   0,
+			})
+			us.state.UpdateStatus(us.yellowThreshold, us.redThreshold)
+			return us.state, nil // Don't return error - handle gracefully
 		}
 
 		today := time.Now().Format("2006-01-02")
@@ -244,20 +263,28 @@ func (us *UsageService) performUpdate(maxRetries int) (*models.UsageState, error
 				"availableDates": availableDates(response.Daily),
 			})
 			us.setNoDataForToday()
-			return us.state, lib.WrapError(errors.New("no data for today"), lib.ErrCodeCCUsage, "ccusage has no data for today")
+			err := lib.UsageError(noDataForTodayMessage)
+			err.WithContextMap(map[string]interface{}{
+				"today":          today,
+				"availableDates": availableDates(response.Daily),
+			})
+			return us.state, err
 		}
 
 		if ccusageOutput.TotalCost == 0 && ccusageOutput.TotalTokens == 0 {
-			us.logger.Warn("ccusage returned zero values, marking as unknown", map[string]interface{}{
+			us.logger.Info("ccusage returned zero values for today - no usage", map[string]interface{}{
 				"totalTokens": ccusageOutput.TotalTokens,
 				"totalCost":   ccusageOutput.TotalCost,
 				"date":        ccusageOutput.Date,
 			})
-			us.setUnknownState()
-			return us.state, lib.WrapError(errors.New("ccusage returned zero values"), lib.ErrCodeCCUsage, "ccusage returned invalid zero values")
+			// Zero values are valid - it means no usage today
+			us.applyUsageData(ccusageOutput)
+			us.state.UpdateStatus(us.yellowThreshold, us.redThreshold)
+			return us.state, nil // No error - this is a valid state
 		}
 
 		us.applyUsageData(ccusageOutput)
+		us.state.UpdateStatus(us.yellowThreshold, us.redThreshold)
 
 		context := map[string]interface{}{
 			"totalTokens": ccusageOutput.TotalTokens,

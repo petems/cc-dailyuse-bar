@@ -3,6 +3,7 @@ package integration
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/adrg/xdg"
@@ -12,6 +13,10 @@ import (
 	"cc-dailyuse-bar/src/services"
 )
 
+func cleanupFallbackConfig() {
+	os.RemoveAll(filepath.Join(os.TempDir(), "cc-dailyuse-bar"))
+}
+
 // T007: Integration test for application startup and config loading
 // This test verifies the complete startup sequence works end-to-end
 // MUST FAIL initially (RED phase) until services are implemented
@@ -20,6 +25,7 @@ func TestApplicationStartup(t *testing.T) {
 	// Arrange - Clean test environment
 	testConfigDir := filepath.Join(os.TempDir(), "cc-dailyuse-bar-test")
 	os.RemoveAll(testConfigDir) // Clean up any previous test data
+	cleanupFallbackConfig()
 
 	// Override XDG config directory for test
 	originalConfigHome := os.Getenv("XDG_CONFIG_HOME")
@@ -48,10 +54,6 @@ func TestApplicationStartup(t *testing.T) {
 	// Step 3: Initialize usage service with config
 	_ = services.NewUsageService(config)
 
-	// Assert - Configuration should be persisted
-	configPath := configService.GetConfigPath()
-	assert.FileExists(t, configPath)
-
 	// Assert - Configuration should contain expected defaults
 	assert.Equal(t, "ccusage", config.CCUsagePath)
 	assert.Equal(t, 30, config.UpdateInterval)
@@ -64,6 +66,7 @@ func TestStartup_ConfigDirectoryCreation(t *testing.T) {
 	// Arrange - Use a completely new directory
 	testConfigDir := filepath.Join(os.TempDir(), "cc-dailyuse-bar-startup-test")
 	os.RemoveAll(testConfigDir)
+	cleanupFallbackConfig()
 
 	originalConfigHome := os.Getenv("XDG_CONFIG_HOME")
 	os.Setenv("XDG_CONFIG_HOME", testConfigDir)
@@ -84,9 +87,9 @@ func TestStartup_ConfigDirectoryCreation(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotNil(t, config)
 
-	// Verify directory was created
-	expectedDir := filepath.Join(xdg.ConfigHome, "cc-dailyuse-bar")
-	assert.DirExists(t, expectedDir)
+	// Directory should not be created until configuration is saved explicitly
+	expectedDir := filepath.Join(testConfigDir, "cc-dailyuse-bar")
+	assert.NoDirExists(t, expectedDir)
 }
 
 func TestStartup_XDGCompliance(t *testing.T) {
@@ -108,8 +111,11 @@ func TestStartup_XDGCompliance(t *testing.T) {
 	}
 
 	foundValidPath := false
+	fallbackPath := filepath.Join(os.TempDir(), "cc-dailyuse-bar", "config.yaml")
+	expectedPaths = append(expectedPaths, filepath.Dir(fallbackPath))
+
 	for _, expectedPath := range expectedPaths {
-		if len(configPath) > len(expectedPath) && configPath[:len(expectedPath)] == expectedPath {
+		if strings.HasPrefix(configPath, expectedPath) {
 			foundValidPath = true
 			break
 		}

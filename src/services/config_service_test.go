@@ -51,8 +51,8 @@ func TestConfigService_Load_NoFile(t *testing.T) {
 	assert.Equal(t, defaults.RedThreshold, config.RedThreshold)
 	assert.Equal(t, defaults.DebugLevel, config.DebugLevel)
 
-	// Should create the config file
-	assert.FileExists(t, configPath)
+	// Should not create a config file automatically
+	assert.NoFileExists(t, configPath)
 }
 
 func TestConfigService_Load_ExistingFile(t *testing.T) {
@@ -442,4 +442,24 @@ func TestConfigService_ConcurrentAccess(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "ccusage", config.CCUsagePath)
 	assert.Equal(t, 30, config.UpdateInterval)
+}
+
+func TestConfigService_FallbackPathPersistence(t *testing.T) {
+	service := NewConfigService()
+
+	fallbackPath := service.fallbackConfigPath()
+	fallbackDir := filepath.Dir(fallbackPath)
+	os.RemoveAll(fallbackDir)
+	defer os.RemoveAll(fallbackDir)
+
+	persistedPath := service.useFallbackPath()
+	assert.Equal(t, fallbackPath, persistedPath)
+
+	// Create placeholder file so persisted path is considered valid
+	err := os.WriteFile(persistedPath, []byte("fallback: true"), 0600)
+	require.NoError(t, err)
+
+	newService := NewConfigService()
+	actualPath := newService.GetConfigPath()
+	assert.Equal(t, fallbackPath, actualPath)
 }

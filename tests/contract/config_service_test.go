@@ -38,6 +38,8 @@ func TestConfigService_Save(t *testing.T) {
 		YellowThreshold: 8.0,
 		RedThreshold:    15.0,
 		DebugLevel:      "DEBUG",
+		CacheWindow:     20,
+		CmdTimeout:      10,
 	}
 
 	// Act
@@ -54,6 +56,8 @@ func TestConfigService_Save(t *testing.T) {
 	assert.Equal(t, config.YellowThreshold, loadedConfig.YellowThreshold)
 	assert.Equal(t, config.RedThreshold, loadedConfig.RedThreshold)
 	assert.Equal(t, config.DebugLevel, loadedConfig.DebugLevel)
+	assert.Equal(t, config.CacheWindow, loadedConfig.CacheWindow)
+	assert.Equal(t, config.CmdTimeout, loadedConfig.CmdTimeout)
 }
 
 func TestConfigService_Validate_Valid(t *testing.T) {
@@ -65,6 +69,8 @@ func TestConfigService_Validate_Valid(t *testing.T) {
 		YellowThreshold: 5.0,
 		RedThreshold:    10.0,
 		DebugLevel:      "INFO",
+		CacheWindow:     10,
+		CmdTimeout:      5,
 	}
 
 	// Act
@@ -85,33 +91,49 @@ func TestConfigService_Validate_Invalid(t *testing.T) {
 		{
 			name: "UpdateInterval too low",
 			config: &models.Config{
+				CCUsagePath:     "ccusage",
 				UpdateInterval:  5,
 				YellowThreshold: 5.0,
 				RedThreshold:    10.0,
+				DebugLevel:      "INFO",
+				CacheWindow:     10,
+				CmdTimeout:      5,
 			},
 		},
 		{
 			name: "UpdateInterval too high",
 			config: &models.Config{
+				CCUsagePath:     "ccusage",
 				UpdateInterval:  400,
 				YellowThreshold: 5.0,
 				RedThreshold:    10.0,
+				DebugLevel:      "INFO",
+				CacheWindow:     10,
+				CmdTimeout:      5,
 			},
 		},
 		{
 			name: "RedThreshold lower than YellowThreshold",
 			config: &models.Config{
+				CCUsagePath:     "ccusage",
 				UpdateInterval:  30,
 				YellowThreshold: 10.0,
 				RedThreshold:    5.0,
+				DebugLevel:      "INFO",
+				CacheWindow:     10,
+				CmdTimeout:      5,
 			},
 		},
 		{
 			name: "Negative thresholds",
 			config: &models.Config{
+				CCUsagePath:     "ccusage",
 				UpdateInterval:  30,
 				YellowThreshold: -1.0,
 				RedThreshold:    10.0,
+				DebugLevel:      "INFO",
+				CacheWindow:     10,
+				CmdTimeout:      5,
 			},
 		},
 	}

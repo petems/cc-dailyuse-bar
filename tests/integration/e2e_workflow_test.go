@@ -23,6 +23,7 @@ func TestCompleteUserWorkflow(t *testing.T) {
 	// Arrange - Clean test environment
 	testConfigDir := filepath.Join(os.TempDir(), "cc-dailyuse-bar-e2e-test")
 	os.RemoveAll(testConfigDir)
+	cleanupFallbackConfig()
 
 	originalConfigHome := os.Getenv("XDG_CONFIG_HOME")
 	os.Setenv("XDG_CONFIG_HOME", testConfigDir)
@@ -57,9 +58,9 @@ func TestCompleteUserWorkflow(t *testing.T) {
 			t.Logf("ccusage not available (expected in test): %v", err)
 		}
 
-		// Verify config file was created
+		// Verify config file is not created until saved explicitly
 		configPath := configService.GetConfigPath()
-		assert.FileExists(t, configPath)
+		assert.NoFileExists(t, configPath)
 	})
 
 	// Step 2: Configuration customization
@@ -79,9 +80,12 @@ func TestCompleteUserWorkflow(t *testing.T) {
 		err = configService.Validate(config)
 		assert.NoError(t, err)
 
-		// Save changes
+		// Save changes (creates the config file)
 		err = configService.Save(config)
 		assert.NoError(t, err)
+
+		configPath := configService.GetConfigPath()
+		assert.FileExists(t, configPath)
 
 		// Verify changes persisted
 		reloadedConfig, err := configService.Load()

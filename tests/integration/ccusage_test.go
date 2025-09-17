@@ -60,12 +60,19 @@ func TestCCUsageUpdate(t *testing.T) {
 }
 
 func TestCCUsageUnavailable(t *testing.T) {
+	// Check if ccusage is available in the test environment
+	_, err := exec.LookPath("ccusage")
+	if err != nil {
+		t.Skip("ccusage binary not available in test environment")
+		return
+	}
+
 	// Arrange
 	config := models.ConfigDefaults()
 	usageService := services.NewUsageService(config)
 
 	// Set invalid ccusage path to simulate unavailable scenario
-	err := usageService.SetCCUsagePath("/nonexistent/ccusage")
+	err = usageService.SetCCUsagePath("/nonexistent/ccusage")
 	assert.Error(t, err, "Should fail to set invalid ccusage path")
 
 	// Act - Check availability (should still be true because path wasn't changed)

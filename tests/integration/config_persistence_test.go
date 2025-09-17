@@ -41,6 +41,8 @@ func TestConfigurationPersistence(t *testing.T) {
 		YellowThreshold: 7.5,
 		RedThreshold:    15.0,
 		DebugLevel:      "DEBUG",
+		CacheWindow:     25,
+		CmdTimeout:      8,
 	}
 
 	err := configService.Save(customConfig)
@@ -56,6 +58,8 @@ func TestConfigurationPersistence(t *testing.T) {
 	assert.Equal(t, customConfig.YellowThreshold, loadedConfig.YellowThreshold)
 	assert.Equal(t, customConfig.RedThreshold, loadedConfig.RedThreshold)
 	assert.Equal(t, customConfig.DebugLevel, loadedConfig.DebugLevel)
+	assert.Equal(t, customConfig.CacheWindow, loadedConfig.CacheWindow)
+	assert.Equal(t, customConfig.CmdTimeout, loadedConfig.CmdTimeout)
 
 	// Assert - Config file should exist
 	configPath := configService.GetConfigPath()
@@ -87,6 +91,8 @@ func TestConfigurationYAMLFormat(t *testing.T) {
 		YellowThreshold: 6.0,
 		RedThreshold:    12.0,
 		DebugLevel:      "INFO",
+		CacheWindow:     15,
+		CmdTimeout:      6,
 	}
 
 	err := configService.Save(config)
@@ -122,42 +128,60 @@ func TestConfigurationValidation(t *testing.T) {
 				YellowThreshold: 5.0,
 				RedThreshold:    10.0,
 				DebugLevel:      "INFO",
+				CacheWindow:     10,
+				CmdTimeout:      5,
 			},
 			expectErr: false,
 		},
 		{
 			name: "Update interval too low",
 			config: &models.Config{
+				CCUsagePath:     "ccusage",
 				UpdateInterval:  5,
 				YellowThreshold: 5.0,
 				RedThreshold:    10.0,
+				DebugLevel:      "INFO",
+				CacheWindow:     10,
+				CmdTimeout:      5,
 			},
 			expectErr: true,
 		},
 		{
 			name: "Update interval too high",
 			config: &models.Config{
+				CCUsagePath:     "ccusage",
 				UpdateInterval:  500,
 				YellowThreshold: 5.0,
 				RedThreshold:    10.0,
+				DebugLevel:      "INFO",
+				CacheWindow:     10,
+				CmdTimeout:      5,
 			},
 			expectErr: true,
 		},
 		{
 			name: "Red threshold lower than yellow",
 			config: &models.Config{
+				CCUsagePath:     "ccusage",
 				UpdateInterval:  30,
 				YellowThreshold: 10.0,
 				RedThreshold:    5.0,
+				DebugLevel:      "INFO",
+				CacheWindow:     10,
+				CmdTimeout:      5,
 			},
 			expectErr: true,
 		},
 		{
 			name: "Negative thresholds",
 			config: &models.Config{
+				CCUsagePath:     "ccusage",
 				UpdateInterval:  30,
 				YellowThreshold: -1.0,
 				RedThreshold:    10.0,
+				DebugLevel:      "INFO",
+				CacheWindow:     10,
+				CmdTimeout:      5,
 			},
 			expectErr: true,
 		},
@@ -168,6 +192,9 @@ func TestConfigurationValidation(t *testing.T) {
 				CCUsagePath:     "", // Empty path to trigger validation error
 				YellowThreshold: 5.0,
 				RedThreshold:    10.0,
+				DebugLevel:      "INFO",
+				CacheWindow:     10,
+				CmdTimeout:      5,
 			},
 			expectErr: true,
 		},
