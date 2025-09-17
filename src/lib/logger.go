@@ -46,6 +46,12 @@ type Logger struct {
 	writer    io.Writer
 }
 
+func (l *Logger) ensureWriter() {
+	if l.writer == nil {
+		l.writer = getDefaultWriter()
+	}
+}
+
 // LogEntry represents a structured log entry
 type LogEntry struct {
 	Context   map[string]interface{} `json:"context,omitempty"`
@@ -92,7 +98,7 @@ func (l *Logger) SetLevel(level LogLevel) {
 // SetOutput sets the destination writer for this logger instance
 func (l *Logger) SetOutput(writer io.Writer) {
 	if writer == nil {
-		writer = io.Discard
+		writer = getDefaultWriter()
 	}
 	l.writer = writer
 }
@@ -129,6 +135,8 @@ func (l *Logger) log(level LogLevel, message string, context ...map[string]inter
 		return
 	}
 
+	l.ensureWriter()
+
 	entry := LogEntry{
 		Timestamp: time.Now().UTC().Format(time.RFC3339),
 		Level:     level.String(),
@@ -156,11 +164,7 @@ func (l *Logger) log(level LogLevel, message string, context ...map[string]inter
 	}
 
 	// Write to configured destination for structured logging
-	writer := l.writer
-	if writer == nil {
-		writer = getDefaultWriter()
-	}
-	fmt.Fprintln(writer, string(jsonData))
+	fmt.Fprintln(l.writer, string(jsonData))
 }
 
 // WithContext creates a convenience function for logging with common context
@@ -182,6 +186,11 @@ func SetGlobalLevel(level LogLevel) {
 func SetGlobalOutput(writer io.Writer) {
 	setDefaultWriter(writer)
 	globalLogger.SetOutput(writer)
+}
+
+// GetGlobalOutput returns the writer used for global logging and future loggers
+func GetGlobalOutput() io.Writer {
+	return getDefaultWriter()
 }
 
 // Debug logs using the global logger
