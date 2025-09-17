@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -101,8 +102,12 @@ func runAsDaemon() {
 		log.Fatalf("Failed to get executable path: %v", err)
 	}
 
-	// Start the application in the background
-	cmd := exec.Command(execPath)
+	// Start the application in the background; validate path resolution first
+	resolved, err := exec.LookPath(execPath)
+	if err != nil {
+		log.Fatalf("Failed to resolve executable: %v", err)
+	}
+	cmd := exec.CommandContext(context.Background(), resolved) // #nosec G204 validated via LookPath
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
@@ -166,17 +171,17 @@ func onReady() {
 	}()
 }
 
-// updateUIFromState updates the UI based on the state provided by the service
+// updateUIFromState updates the UI based on the state provided by the service.
 func updateUIFromState(state *models.UsageState) {
 	if state == nil {
-		systray.SetTitle(fmt.Sprintf("CC %s", t("Error", "エラー")))
-		updateMenuItems([]string{fmt.Sprintf("❌ %s", t("No data available", "データがありません"))})
+		systray.SetTitle("CC " + t("Error", "エラー"))
+		updateMenuItems([]string{"❌ " + t("No data available", "データがありません")})
 		return
 	}
 
 	if !state.IsAvailable || state.Status == models.Unknown {
-		systray.SetTitle(fmt.Sprintf("CC %s %s", "⚪️", t("Unknown", "不明")))
-		updateMenuItems([]string{fmt.Sprintf("⚠️ %s", t("Usage data unavailable", "使用データを利用できません"))})
+		systray.SetTitle("CC " + "⚪️" + " " + t("Unknown", "不明"))
+		updateMenuItems([]string{"⚠️ " + t("Usage data unavailable", "使用データを利用できません")})
 		return
 	}
 
@@ -185,7 +190,7 @@ func updateUIFromState(state *models.UsageState) {
 	emoji := emojiForStatus(state.Status)
 
 	// Update compact title
-	systray.SetTitle(fmt.Sprintf("CC %s $%.2f", emoji, state.DailyCost))
+	systray.SetTitle("CC " + emoji + " $" + fmt.Sprintf("%.2f", state.DailyCost))
 
 	// Update detailed menu items
 	detailedInfo := []string{
@@ -201,8 +206,8 @@ func updateStatus() {
 	usage, err := usageService.UpdateUsage()
 	if err != nil {
 		log.Printf("Error getting usage data: %v", err)
-		systray.SetTitle(fmt.Sprintf("CC %s", t("Error", "エラー")))
-		updateMenuItems([]string{fmt.Sprintf("❌ %s", t("Failed to fetch data", "データを取得できませんでした"))})
+		systray.SetTitle("CC " + t("Error", "エラー"))
+		updateMenuItems([]string{"❌ " + t("Failed to fetch data", "データを取得できませんでした")})
 		return
 	}
 
@@ -227,8 +232,7 @@ func updateMenuItems(info []string) {
 
 func showSettings() {
 	// Show settings in the tray title temporarily
-	settingsTitle := fmt.Sprintf("Settings: %ds, $%.1f/$%.1f",
-		config.UpdateInterval, config.YellowThreshold, config.RedThreshold)
+	settingsTitle := fmt.Sprintf("Settings: %ds, $%.1f/$%.1f", config.UpdateInterval, config.YellowThreshold, config.RedThreshold)
 	systray.SetTitle(settingsTitle)
 
 	// Log full settings to console
@@ -242,12 +246,13 @@ func showSettings() {
 
 	// Reset title after 3 seconds
 	go func() {
-		time.Sleep(3 * time.Second)
+		const settingsTitleRestoreDelaySeconds = 3
+		time.Sleep(settingsTitleRestoreDelaySeconds * time.Second)
 		// Get current usage to restore proper title
 		usage, err := usageService.GetDailyUsage()
 		if err == nil && usage != nil && usage.IsAvailable {
 			emoji := emojiForStatus(usage.Status)
-			systray.SetTitle(fmt.Sprintf("CC %s $%.2f", emoji, usage.DailyCost))
+			systray.SetTitle("CC " + emoji + " $" + fmt.Sprintf("%.2f", usage.DailyCost))
 		} else {
 			systray.SetTitle("CC Loading...")
 		}

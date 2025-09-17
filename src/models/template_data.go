@@ -1,3 +1,4 @@
+// Package models contains domain models and configuration types.
 package models
 
 import (
@@ -5,7 +6,7 @@ import (
 	"time"
 )
 
-// TemplateData represents data available to display format templates
+// TemplateData represents data available to display format templates.
 type TemplateData struct {
 	Cost   string `json:"cost"`
 	Status string `json:"status"`
@@ -14,7 +15,7 @@ type TemplateData struct {
 	Count  int    `json:"count"`
 }
 
-// NewTemplateData creates TemplateData from a UsageState
+// NewTemplateData creates TemplateData from a UsageState.
 func NewTemplateData(usage *UsageState) *TemplateData {
 	now := time.Now()
 
@@ -28,7 +29,7 @@ func NewTemplateData(usage *UsageState) *TemplateData {
 }
 
 // NewTemplateDataWithCustomValues creates TemplateData with specific values
-// Used for testing and custom scenarios
+// Used for testing and custom scenarios.
 func NewTemplateDataWithCustomValues(count int, cost float64, status AlertStatus) *TemplateData {
 	now := time.Now()
 

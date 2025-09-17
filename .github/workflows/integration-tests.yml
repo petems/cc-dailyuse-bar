@@ -1,0 +1,63 @@
+name: Integration Tests (Improved)
+
+on:
+  push:
+    branches: [ master, develop ]
+  pull_request:
+    branches: [ master, develop ]
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  integration-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: ./.github/actions/setup-go
+
+      - name: Build application
+        run: go build -v -o cc-dailyuse-bar ./src
+
+      - name: Run integration tests
+        uses: ./.github/actions/run-tests
+        with:
+          test-paths: './tests/integration/...'
+          test-tags: 'integration'
+          race-detection: 'true'
+          coverage-profile: 'integration-coverage.out'
+          timeout: '30m'
+          upload-coverage: 'true'
+          coverage-flags: 'integration'
+
+  integration-tests-parallel:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        test-suite: [
+          'ccusage_test.go',
+          'config_persistence_test.go', 
+          'daily_reset_test.go',
+          'e2e_workflow_test.go',
+          'startup_test.go'
+        ]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: ./.github/actions/setup-go
+
+      - name: Build application
+        run: go build -v -o cc-dailyuse-bar ./src
+
+      - name: Run specific integration test suite
+        uses: ./.github/actions/run-tests
+        with:
+          test-paths: './tests/integration/${{ matrix.test-suite }}'
+          test-tags: 'integration'
+          race-detection: 'false'
+          timeout: '15m'
+          upload-coverage: 'false'

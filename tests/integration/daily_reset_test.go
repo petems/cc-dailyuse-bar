@@ -7,11 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-
 	"cc-dailyuse-bar/src/models"
 	"cc-dailyuse-bar/src/services"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // T011: Integration test for daily usage reset at midnight
@@ -170,7 +170,7 @@ func TestResetWithThresholds(t *testing.T) {
 	}`, today)
 
 	scriptContent := fmt.Sprintf("#!/bin/bash\necho '%s'\n", zeroUsageJSON)
-	err := os.WriteFile(mockScript, []byte(scriptContent), 0755)
+	err := os.WriteFile(mockScript, []byte(scriptContent), 0o755)
 	require.NoError(t, err)
 
 	// Configure usage service to use mock script
@@ -197,10 +197,10 @@ func TestResetWithThresholds(t *testing.T) {
 
 	// Assert - With 0 cost, status should be Green regardless of thresholds
 	assert.Equal(t, models.Green, usage.Status)
-	assert.True(t, usage.DailyCost < config.YellowThreshold,
+	assert.Less(t, usage.DailyCost, config.YellowThreshold,
 		"Reset cost (%.2f) should be below yellow threshold (%.2f)",
 		usage.DailyCost, config.YellowThreshold)
-	assert.True(t, usage.DailyCost < config.RedThreshold,
+	assert.Less(t, usage.DailyCost, config.RedThreshold,
 		"Reset cost (%.2f) should be below red threshold (%.2f)",
 		usage.DailyCost, config.RedThreshold)
 }

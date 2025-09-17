@@ -5,11 +5,11 @@ import (
 	"path/filepath"
 	"testing"
 
+	"cc-dailyuse-bar/src/services"
+
 	"github.com/adrg/xdg"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"cc-dailyuse-bar/src/services"
 )
 
 // T007: Integration test for application startup and config loading

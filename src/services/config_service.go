@@ -1,23 +1,29 @@
+// Package services implements business logic services like configuration and usage.
 package services
 
 import (
 	"os"
 	"path/filepath"
 
-	"github.com/adrg/xdg"
-	"gopkg.in/yaml.v3"
-
 	"cc-dailyuse-bar/src/lib"
 	"cc-dailyuse-bar/src/models"
+
+	"github.com/adrg/xdg"
+	"gopkg.in/yaml.v3"
 )
 
-// ConfigService implements configuration management with XDG compliance
+const (
+	configDirPerm  = 0o750
+	configFilePerm = 0o600
+)
+
+// ConfigService implements configuration management with XDG compliance.
 type ConfigService struct {
 	logger     *lib.Logger
 	configPath string // Override for testing
 }
 
-// NewConfigService creates a new ConfigService instance
+// NewConfigService creates a new ConfigService instance.
 func NewConfigService() *ConfigService {
 	return &ConfigService{
 		logger: lib.NewLogger("config-service"),
@@ -26,7 +32,7 @@ func NewConfigService() *ConfigService {
 
 // Load reads configuration from XDG-compliant storage
 // Returns default config if file doesn't exist
-// Returns error for permission/system issues, corrupted files, or invalid configurations
+// Returns error for permission/system issues, corrupted files, or invalid configurations.
 func (cs *ConfigService) Load() (*models.Config, error) {
 	configPath := cs.GetConfigPath()
 
@@ -39,13 +45,16 @@ func (cs *ConfigService) Load() (*models.Config, error) {
 			cs.logger.Warn("Failed to create default config file", map[string]interface{}{
 				"error": saveErr,
 			})
-			return defaults, nil
+			return defaults, nil //nolint:nilerr // intentional: app can operate with in-memory defaults even if persisting fails
 		}
 		return defaults, nil
+	} else if err != nil {
+		// Different error while stating the file
+		return nil, err
 	}
 
 	// Read the file - propagate read errors (permission issues, etc.)
-	data, err := os.ReadFile(configPath)
+	data, err := os.ReadFile(configPath) // #nosec G304: path is controlled by application (XDG location or test override)
 	if err != nil {
 		return nil, err
 	}
@@ -67,7 +76,7 @@ func (cs *ConfigService) Load() (*models.Config, error) {
 
 // Save persists configuration to XDG-compliant storage
 // Creates directories if they don't exist
-// Returns error for validation failures or write issues
+// Returns error for validation failures or write issues.
 func (cs *ConfigService) Save(config *models.Config) error {
 	// Validate first
 	if err := cs.Validate(config); err != nil {
@@ -78,7 +87,7 @@ func (cs *ConfigService) Save(config *models.Config) error {
 	configDir := filepath.Dir(configPath)
 
 	// Create directory if it doesn't exist
-	if err := os.MkdirAll(configDir, 0755); err != nil {
+	if err := os.MkdirAll(configDir, configDirPerm); err != nil {
 		return err
 	}
 
@@ -89,17 +98,17 @@ func (cs *ConfigService) Save(config *models.Config) error {
 	}
 
 	// Write file with user-only permissions for privacy
-	return os.WriteFile(configPath, data, 0600)
+	return os.WriteFile(configPath, data, configFilePerm)
 }
 
 // Validate checks configuration values for correctness
-// Returns error describing first validation failure found
+// Returns error describing first validation failure found.
 func (cs *ConfigService) Validate(config *models.Config) error {
 	return config.Validate()
 }
 
 // GetConfigPath returns the full path to the config file
-// Useful for debugging and user information
+// Useful for debugging and user information.
 func (cs *ConfigService) GetConfigPath() string {
 	if cs.configPath != "" {
 		return cs.configPath
@@ -107,7 +116,7 @@ func (cs *ConfigService) GetConfigPath() string {
 	return filepath.Join(xdg.ConfigHome, "cc-dailyuse-bar", "config.yaml")
 }
 
-// SetConfigPath sets a custom config path for testing
+// SetConfigPath sets a custom config path for testing.
 func (cs *ConfigService) SetConfigPath(path string) {
 	cs.configPath = path
 }

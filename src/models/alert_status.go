@@ -1,6 +1,7 @@
+// Package models contains domain models and configuration types.
 package models
 
-// AlertStatus represents the current alert level
+// AlertStatus represents the current alert level.
 type AlertStatus int
 
 const (
@@ -10,7 +11,7 @@ const (
 	Unknown                    // Usage data unavailable or invalid
 )
 
-// String returns human-readable alert status
+// String returns human-readable alert status.
 func (a AlertStatus) String() string {
 	switch a {
 	case Green:
@@ -26,7 +27,7 @@ func (a AlertStatus) String() string {
 	}
 }
 
-// ToTrayIcon converts an AlertStatus to the corresponding TrayIcon
+// ToTrayIcon converts an AlertStatus to the corresponding TrayIcon.
 func (a AlertStatus) ToTrayIcon() TrayIcon {
 	switch a {
 	case Green:
@@ -42,7 +43,7 @@ func (a AlertStatus) ToTrayIcon() TrayIcon {
 	}
 }
 
-// TrayIcon represents different icon states for the system tray
+// TrayIcon represents different icon states for the system tray.
 type TrayIcon int
 
 const (
@@ -52,7 +53,7 @@ const (
 	IconOffline                 // ccusage unavailable
 )
 
-// FromAlertStatus converts an AlertStatus to the corresponding TrayIcon
+// FromAlertStatus converts an AlertStatus to the corresponding TrayIcon.
 func (t TrayIcon) FromAlertStatus(status AlertStatus, isAvailable bool) TrayIcon {
 	if !isAvailable {
 		return IconOffline

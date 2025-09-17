@@ -1,0 +1,70 @@
+name: Formatting
+
+on:
+  push:
+    branches: [ master, develop ]
+  pull_request:
+    branches: [ master, develop ]
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  fmt:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: ./.github/actions/setup-go
+
+      - name: Install gofumpt
+        run: |
+          if ! command -v gofumpt >/dev/null 2>&1; then
+            go install mvdan.cc/gofumpt@latest
+            echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+          fi
+
+      - name: Check gofumpt formatting
+        run: |
+          unformatted=$(gofumpt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "The following files are not gofumpt-formatted:" >&2
+            echo "$unformatted" >&2
+            echo "Run 'make gofumpt' or 'gofumpt -w .' to fix." >&2
+            exit 1
+          fi
+
+      - name: Check Go formatting
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "The following files are not formatted:"
+            echo "$unformatted"
+            echo "Please run 'go fmt ./...' to fix formatting issues"
+            exit 1
+          fi
+
+      - name: Check import formatting
+        run: |
+          # Check if goimports is available, if not install it
+          if ! command -v goimports &> /dev/null; then
+            go install golang.org/x/tools/cmd/goimports@latest
+          fi
+          
+          # Check for unformatted imports
+          unformatted=$(goimports -l .)
+          if [ -n "$unformatted" ]; then
+            echo "The following files have unformatted imports:"
+            echo "$unformatted"
+            echo "Please run 'goimports -w .' to fix import formatting"
+            exit 1
+          fi
+
+      - name: Check for trailing whitespace
+        run: |
+          if find . -name "*.go" -exec grep -l '[[:space:]]$' {} \; | grep -v vendor; then
+            echo "Found trailing whitespace in Go files"
+            echo "Please remove trailing whitespace"
+            exit 1
+          fi

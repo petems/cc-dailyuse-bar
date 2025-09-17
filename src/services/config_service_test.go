@@ -6,10 +6,10 @@ import (
 	"strings"
 	"testing"
 
+	"cc-dailyuse-bar/src/models"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"cc-dailyuse-bar/src/models"
 )
 
 func TestNewConfigService(t *testing.T) {
@@ -99,11 +99,11 @@ func TestConfigService_Load_InvalidYAML(t *testing.T) {
 	service.SetConfigPath(configPath)
 
 	// Create directory
-	err := os.MkdirAll(filepath.Dir(configPath), 0755)
+	err := os.MkdirAll(filepath.Dir(configPath), 0o755)
 	require.NoError(t, err)
 
 	// Write invalid YAML
-	err = os.WriteFile(configPath, []byte("invalid: yaml: content: ["), 0644)
+	err = os.WriteFile(configPath, []byte("invalid: yaml: content: ["), 0o644)
 	require.NoError(t, err)
 
 	// Load should return error for invalid YAML
@@ -124,7 +124,7 @@ func TestConfigService_Load_InvalidConfig(t *testing.T) {
 	configPath := service.GetConfigPath()
 
 	// Create directory
-	err := os.MkdirAll(filepath.Dir(configPath), 0755)
+	err := os.MkdirAll(filepath.Dir(configPath), 0o755)
 	require.NoError(t, err)
 
 	// Write invalid config (negative update interval)
@@ -136,7 +136,7 @@ debug_level: "INFO"
 cache_window: 10
 cmd_timeout: 5`
 
-	err = os.WriteFile(configPath, []byte(invalidYAML), 0644)
+	err = os.WriteFile(configPath, []byte(invalidYAML), 0o644)
 	require.NoError(t, err)
 
 	// Load should return error for invalid config
@@ -342,11 +342,11 @@ func TestConfigService_Load_ReadPermissionError(t *testing.T) {
 	configPath := service.GetConfigPath()
 
 	// Create directory
-	err := os.MkdirAll(filepath.Dir(configPath), 0755)
+	err := os.MkdirAll(filepath.Dir(configPath), 0o755)
 	require.NoError(t, err)
 
 	// Create a file with no read permissions
-	err = os.WriteFile(configPath, []byte("ccusage_path: test"), 0000)
+	err = os.WriteFile(configPath, []byte("ccusage_path: test"), 0o000)
 	require.NoError(t, err)
 
 	// Load should return error for permission issues
@@ -371,7 +371,7 @@ func TestConfigService_Save_WritePermissionError(t *testing.T) {
 	configPath := service.GetConfigPath()
 
 	// Create directory with no write permissions
-	err := os.MkdirAll(filepath.Dir(configPath), 0555)
+	err := os.MkdirAll(filepath.Dir(configPath), 0o555)
 	require.NoError(t, err)
 
 	config := models.ConfigDefaults()

@@ -134,15 +134,15 @@ func TestTrayIcon_EnumValues(t *testing.T) {
 
 func TestAlertStatus_StatusTransitions(t *testing.T) {
 	// Test logical progression of status values
-	assert.True(t, Green < Yellow, "Green should be less than Yellow")
-	assert.True(t, Yellow < Red, "Yellow should be less than Red")
+	assert.Less(t, Green, Yellow, "Green should be less than Yellow")
+	assert.Less(t, Yellow, Red, "Yellow should be less than Red")
 }
 
 func TestTrayIcon_IconTransitions(t *testing.T) {
 	// Test logical progression of icon values
-	assert.True(t, IconGreen < IconYellow, "IconGreen should be less than IconYellow")
-	assert.True(t, IconYellow < IconRed, "IconYellow should be less than IconRed")
-	assert.True(t, IconRed < IconOffline, "IconRed should be less than IconOffline")
+	assert.Less(t, IconGreen, IconYellow, "IconGreen should be less than IconYellow")
+	assert.Less(t, IconYellow, IconRed, "IconYellow should be less than IconRed")
+	assert.Less(t, IconRed, IconOffline, "IconRed should be less than IconOffline")
 }
 
 func TestAlertStatus_StringConsistency(t *testing.T) {

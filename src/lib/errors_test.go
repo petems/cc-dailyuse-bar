@@ -59,7 +59,7 @@ func TestNewError(t *testing.T) {
 	assert.NotEmpty(t, err.Component)
 	assert.NotEmpty(t, err.Function)
 	assert.NotEmpty(t, err.File)
-	assert.Greater(t, err.Line, 0)
+	assert.Positive(t, err.Line)
 }
 
 func TestWrapError(t *testing.T) {
@@ -72,7 +72,7 @@ func TestWrapError(t *testing.T) {
 	assert.NotEmpty(t, wrappedErr.Component)
 	assert.NotEmpty(t, wrappedErr.Function)
 	assert.NotEmpty(t, wrappedErr.File)
-	assert.Greater(t, wrappedErr.Line, 0)
+	assert.Positive(t, wrappedErr.Line)
 }
 
 func TestWrapError_NilError(t *testing.T) {

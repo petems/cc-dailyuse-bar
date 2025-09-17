@@ -4,9 +4,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
-
 	"cc-dailyuse-bar/src/models"
+
+	"github.com/stretchr/testify/assert"
 )
 
 // T034: Unit tests for TemplateData formatting

@@ -17,7 +17,7 @@ LDFLAGS=-ldflags "-s -w"
 LDFLAGS_GUI=-ldflags "-s -w -H windowsgui"
 BUILD_FLAGS=-v
 
-.PHONY: all build clean test coverage coverage-html coverage-func deps lint fmt vet help run install
+.PHONY: all build clean test coverage coverage-html coverage-func deps lint fmt vet help run install gofumpt
 
 # Default target
 all: clean deps lint test build
@@ -92,7 +92,14 @@ lint-fix:
 
 # Format code
 fmt:
+	@command -v gofumpt >/dev/null 2>&1 || { echo "Installing gofumpt..."; $(GOCMD) install mvdan.cc/gofumpt@latest; }
+	gofumpt -l -w .
 	$(GOCMD) fmt ./...
+
+# Format code with gofumpt only (write changes)
+gofumpt:
+	@command -v gofumpt >/dev/null 2>&1 || { echo "Installing gofumpt..."; $(GOCMD) install mvdan.cc/gofumpt@latest; }
+	gofumpt -l -w .
 
 # Run go vet
 vet:
@@ -129,6 +136,8 @@ uninstall-service:
 
 # Run formatters
 format:
+	@command -v gofumpt >/dev/null 2>&1 || { echo "Installing gofumpt..."; $(GOCMD) install mvdan.cc/gofumpt@latest; }
+	gofumpt -l -w .
 	$(GOCMD) fmt ./...
 	$(GOLANGCI_LINT) run --timeout=$(LINT_TIMEOUT) --fix
 
@@ -181,6 +190,7 @@ help:
 	@echo "  lint         - Run linter"
 	@echo "  lint-fix     - Run linter with auto-fix"
 	@echo "  fmt          - Format Go code"
+	@echo "  gofumpt      - Format Go code with gofumpt (writes changes)"
 	@echo "  vet          - Run go vet"
 	@echo "  run          - Run the application"
 	@echo "  daemon       - Run as daemon (background process)"

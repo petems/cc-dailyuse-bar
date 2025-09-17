@@ -8,13 +8,13 @@ import (
 	"testing"
 	"time"
 
+	"cc-dailyuse-bar/src/models"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"cc-dailyuse-bar/src/models"
 )
 
-// Helper function to create a usage service with default config
+// Helper function to create a usage service with default config.
 func newTestUsageService() *UsageService {
 	config := models.ConfigDefaults()
 	return NewUsageService(config)
@@ -146,7 +146,7 @@ func TestUsageService_SetNoDataForToday(t *testing.T) {
 	// Verify no data for today state
 	assert.Equal(t, 0, service.state.DailyCount)
 	assert.Equal(t, 0.0, service.state.DailyCost)
-	assert.True(t, service.state.IsAvailable)  // ccusage works, just no data today
+	assert.True(t, service.state.IsAvailable)           // ccusage works, just no data today
 	assert.Equal(t, models.Green, service.state.Status) // $0.00 = Green
 	assert.False(t, service.state.LastUpdate.IsZero())
 }
@@ -302,7 +302,7 @@ func TestUsageService_UpdateWithRetry_CommandFailure(t *testing.T) {
 	scriptContent := `#!/bin/bash
 exit 1`
 
-	err := os.WriteFile(scriptPath, []byte(scriptContent), 0755)
+	err := os.WriteFile(scriptPath, []byte(scriptContent), 0o755)
 	require.NoError(t, err)
 
 	service.ccusagePath = scriptPath
@@ -323,7 +323,7 @@ func TestUsageService_UpdateWithRetry_InvalidJSON(t *testing.T) {
 	scriptContent := `#!/bin/bash
 echo "invalid json"`
 
-	err := os.WriteFile(scriptPath, []byte(scriptContent), 0755)
+	err := os.WriteFile(scriptPath, []byte(scriptContent), 0o755)
 	require.NoError(t, err)
 
 	service.ccusagePath = scriptPath
@@ -367,7 +367,7 @@ func TestUsageService_UpdateWithRetry_ValidJSON(t *testing.T) {
 	scriptContent := `#!/bin/bash
 echo '` + string(jsonData) + `'`
 
-	err = os.WriteFile(scriptPath, []byte(scriptContent), 0755)
+	err = os.WriteFile(scriptPath, []byte(scriptContent), 0o755)
 	require.NoError(t, err)
 
 	service.ccusagePath = scriptPath
@@ -411,7 +411,7 @@ func TestUsageService_UpdateWithRetry_NoDataForToday(t *testing.T) {
 	scriptContent := `#!/bin/bash
 echo '` + string(jsonData) + `'`
 
-	err = os.WriteFile(scriptPath, []byte(scriptContent), 0755)
+	err = os.WriteFile(scriptPath, []byte(scriptContent), 0o755)
 	require.NoError(t, err)
 
 	service.ccusagePath = scriptPath
@@ -455,7 +455,7 @@ func TestUsageService_UpdateWithRetry_ZeroValues(t *testing.T) {
 	scriptContent := `#!/bin/bash
 echo '` + string(jsonData) + `'`
 
-	err = os.WriteFile(scriptPath, []byte(scriptContent), 0755)
+	err = os.WriteFile(scriptPath, []byte(scriptContent), 0o755)
 	require.NoError(t, err)
 
 	service.ccusagePath = scriptPath
@@ -585,7 +585,7 @@ func TestUsageService_NoDataForToday(t *testing.T) {
 	scriptContent := `#!/bin/bash
 echo '` + string(jsonData) + `'`
 
-	err = os.WriteFile(scriptPath, []byte(scriptContent), 0755)
+	err = os.WriteFile(scriptPath, []byte(scriptContent), 0o755)
 	require.NoError(t, err)
 
 	service.ccusagePath = scriptPath
@@ -598,7 +598,7 @@ echo '` + string(jsonData) + `'`
 	assert.Contains(t, err.Error(), "no data for today")
 	assert.Equal(t, 0, state.DailyCount)
 	assert.Equal(t, 0.0, state.DailyCost)
-	assert.True(t, state.IsAvailable) // ccusage works, just no data for today
+	assert.True(t, state.IsAvailable)                // ccusage works, just no data for today
 	assert.NotEqual(t, models.Unknown, state.Status) // Should not be Unknown
 }
 
@@ -616,6 +616,6 @@ func TestUsageService_DataUnavailable(t *testing.T) {
 	assert.Contains(t, err.Error(), "not available")
 	assert.Equal(t, 0, state.DailyCount)
 	assert.Equal(t, 0.0, state.DailyCost)
-	assert.False(t, state.IsAvailable) // ccusage itself is unavailable
+	assert.False(t, state.IsAvailable)            // ccusage itself is unavailable
 	assert.Equal(t, models.Unknown, state.Status) // Should be Unknown
 }

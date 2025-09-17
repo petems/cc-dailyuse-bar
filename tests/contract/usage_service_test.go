@@ -4,11 +4,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-
 	"cc-dailyuse-bar/src/models"
 	"cc-dailyuse-bar/src/services"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestUsageService_GetDailyUsage(t *testing.T) {

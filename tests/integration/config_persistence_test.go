@@ -5,11 +5,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-
 	"cc-dailyuse-bar/src/models"
 	"cc-dailyuse-bar/src/services"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // T010: Integration test for configuration persistence and validation
@@ -215,7 +215,7 @@ func TestConfigurationDefaults(t *testing.T) {
 
 	// Note: Load() returns defaults when no config file exists, or saved config if it exists
 	assert.NotEmpty(t, config.CCUsagePath)
-	assert.Greater(t, config.UpdateInterval, 0)
+	assert.Positive(t, config.UpdateInterval)
 	assert.Greater(t, config.YellowThreshold, 0.0)
 	assert.Greater(t, config.RedThreshold, config.YellowThreshold)
 	assert.NotEmpty(t, config.DebugLevel)

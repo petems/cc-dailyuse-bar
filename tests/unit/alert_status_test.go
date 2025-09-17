@@ -3,9 +3,9 @@ package unit
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-
 	"cc-dailyuse-bar/src/models"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestAlertStatus_String(t *testing.T) {

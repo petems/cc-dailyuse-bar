@@ -1,3 +1,4 @@
+// Package lib provides shared utilities like error handling and logging.
 package lib
 
 import (
@@ -8,7 +9,7 @@ import (
 	"time"
 )
 
-// LogLevel represents the severity of log messages
+// LogLevel represents the severity of log messages.
 type LogLevel int
 
 const (
@@ -19,7 +20,7 @@ const (
 	FATAL
 )
 
-// String returns the string representation of LogLevel
+// String returns the string representation of LogLevel.
 func (l LogLevel) String() string {
 	switch l {
 	case DEBUG:
@@ -37,13 +38,13 @@ func (l LogLevel) String() string {
 	}
 }
 
-// Logger provides structured JSON logging with context
+// Logger provides structured JSON logging with context.
 type Logger struct {
 	component string
 	level     LogLevel
 }
 
-// LogEntry represents a structured log entry
+// LogEntry represents a structured log entry.
 type LogEntry struct {
 	Context   map[string]interface{} `json:"context,omitempty"`
 	Timestamp string                 `json:"timestamp"`
@@ -52,7 +53,7 @@ type LogEntry struct {
 	Message   string                 `json:"message"`
 }
 
-// NewLogger creates a new logger for the specified component
+// NewLogger creates a new logger for the specified component.
 func NewLogger(component string) *Logger {
 	return &Logger{
 		component: component,
@@ -60,38 +61,38 @@ func NewLogger(component string) *Logger {
 	}
 }
 
-// SetLevel sets the minimum log level
+// SetLevel sets the minimum log level.
 func (l *Logger) SetLevel(level LogLevel) {
 	l.level = level
 }
 
-// Debug logs a debug message with optional context
+// Debug logs a debug message with optional context.
 func (l *Logger) Debug(message string, context ...map[string]interface{}) {
 	l.log(DEBUG, message, context...)
 }
 
-// Info logs an info message with optional context
+// Info logs an info message with optional context.
 func (l *Logger) Info(message string, context ...map[string]interface{}) {
 	l.log(INFO, message, context...)
 }
 
-// Warn logs a warning message with optional context
+// Warn logs a warning message with optional context.
 func (l *Logger) Warn(message string, context ...map[string]interface{}) {
 	l.log(WARN, message, context...)
 }
 
-// Error logs an error message with optional context
+// Error logs an error message with optional context.
 func (l *Logger) Error(message string, context ...map[string]interface{}) {
 	l.log(ERROR, message, context...)
 }
 
-// Fatal logs a fatal message and exits the program
+// Fatal logs a fatal message and exits the program.
 func (l *Logger) Fatal(message string, context ...map[string]interface{}) {
 	l.log(FATAL, message, context...)
 	os.Exit(1)
 }
 
-// log performs the actual logging with structured JSON output
+// log performs the actual logging with structured JSON output.
 func (l *Logger) log(level LogLevel, message string, context ...map[string]interface{}) {
 	if level < l.level {
 		return
@@ -127,42 +128,42 @@ func (l *Logger) log(level LogLevel, message string, context ...map[string]inter
 	fmt.Fprintln(os.Stderr, string(jsonData))
 }
 
-// WithContext creates a convenience function for logging with common context
+// WithContext creates a convenience function for logging with common context.
 func (l *Logger) WithContext(context map[string]interface{}) func(LogLevel, string) {
 	return func(level LogLevel, message string) {
 		l.log(level, message, context)
 	}
 }
 
-// Global logger instance for convenience
+// Global logger instance for convenience.
 var globalLogger = NewLogger("cc-dailyuse-bar")
 
-// SetGlobalLevel sets the global logger level
+// SetGlobalLevel sets the global logger level.
 func SetGlobalLevel(level LogLevel) {
 	globalLogger.SetLevel(level)
 }
 
-// Debug logs using the global logger
+// Debug logs using the global logger.
 func Debug(message string, context ...map[string]interface{}) {
 	globalLogger.Debug(message, context...)
 }
 
-// Info logs using the global logger
+// Info logs using the global logger.
 func Info(message string, context ...map[string]interface{}) {
 	globalLogger.Info(message, context...)
 }
 
-// Warn logs using the global logger
+// Warn logs using the global logger.
 func Warn(message string, context ...map[string]interface{}) {
 	globalLogger.Warn(message, context...)
 }
 
-// Error logs using the global logger
+// Error logs using the global logger.
 func Error(message string, context ...map[string]interface{}) {
 	globalLogger.Error(message, context...)
 }
 
-// Fatal logs using the global logger and exits
+// Fatal logs using the global logger and exits.
 func Fatal(message string, context ...map[string]interface{}) {
 	globalLogger.Fatal(message, context...)
 }

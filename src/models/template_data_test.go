@@ -238,7 +238,7 @@ func TestTemplateData_JSONCompatibility(t *testing.T) {
 	assert.Equal(t, "count", getJSONTag(data, "Count"))
 }
 
-// Helper function to get JSON tag (simplified version)
+// Helper function to get JSON tag (simplified version).
 func getJSONTag(data *TemplateData, field string) string {
 	// This is a simplified way to verify JSON tags exist
 	// In a real test, you'd use reflection or actually marshal to JSON
@@ -314,7 +314,7 @@ func TestTemplateData_RealWorldScenarios(t *testing.T) {
 	}
 }
 
-// Helper function to format cost like the TemplateData does
+// Helper function to format cost like the TemplateData does.
 func formatCost(cost float64) string {
 	return fmt.Sprintf("$%.2f", cost)
 }

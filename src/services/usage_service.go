@@ -1,3 +1,4 @@
+// Package services implements business logic services like configuration and usage.
 package services
 
 import (
@@ -13,11 +14,14 @@ import (
 	"cc-dailyuse-bar/src/models"
 )
 
-const maxLoggedOutputLength = 128
+const (
+	maxLoggedOutputLength = 128
+	pollingRetryCount     = 3
+)
 
 var errCCUsageUnavailable = errors.New("ccusage is not available")
 
-// UsageService implements Claude Code usage tracking via ccusage integration
+// UsageService implements Claude Code usage tracking via ccusage integration.
 type UsageService struct {
 	lastQuery      time.Time
 	state          *models.UsageState
@@ -32,7 +36,7 @@ type UsageService struct {
 	cmdTimeout     time.Duration
 }
 
-// NewUsageService creates a new UsageService instance
+// NewUsageService creates a new UsageService instance.
 func NewUsageService(config *models.Config) *UsageService {
 	return &UsageService{
 		ccusagePath:   config.CCUsagePath,
@@ -45,14 +49,14 @@ func NewUsageService(config *models.Config) *UsageService {
 	}
 }
 
-// CCUsageOutput represents the JSON structure returned by ccusage
+// CCUsageOutput represents the JSON structure returned by ccusage.
 type CCUsageOutput struct {
 	Date        string  `json:"date"`
 	TotalTokens int     `json:"totalTokens"`
 	TotalCost   float64 `json:"totalCost"`
 }
 
-// CCUsageResponse represents the full JSON response from ccusage
+// CCUsageResponse represents the full JSON response from ccusage.
 type CCUsageResponse struct {
 	Daily  []CCUsageOutput `json:"daily"`
 	Totals struct {
@@ -63,7 +67,7 @@ type CCUsageResponse struct {
 
 // GetDailyUsage queries ccusage and returns current daily statistics
 // Returns cached data if last query was within cache window
-// Returns error if ccusage is unavailable or returns invalid data
+// Returns error if ccusage is unavailable or returns invalid data.
 func (us *UsageService) GetDailyUsage() (*models.UsageState, error) {
 	if time.Since(us.lastQuery) < us.cacheWindow && us.state.IsAvailable {
 		return us.state, nil
@@ -74,12 +78,12 @@ func (us *UsageService) GetDailyUsage() (*models.UsageState, error) {
 
 // UpdateUsage forces a fresh query to ccusage, bypassing cache
 // Used for immediate updates when user requests refresh
-// Returns error if ccusage command fails or data is invalid
+// Returns error if ccusage command fails or data is invalid.
 func (us *UsageService) UpdateUsage() (*models.UsageState, error) {
 	return us.performUpdate(1)
 }
 
-// setUnknownState marks the usage data as unavailable/unknown
+// setUnknownState marks the usage data as unavailable/unknown.
 func (us *UsageService) setUnknownState() {
 	now := time.Now()
 	us.state.DailyCount = 0
@@ -90,20 +94,20 @@ func (us *UsageService) setUnknownState() {
 	us.lastQuery = now
 }
 
-// setNoDataForToday sets state for when ccusage works but has no data for today
+// setNoDataForToday sets state for when ccusage works but has no data for today.
 func (us *UsageService) setNoDataForToday() {
 	now := time.Now()
 	us.state.DailyCount = 0
 	us.state.DailyCost = 0.0
 	us.state.LastUpdate = now
-	us.state.IsAvailable = true // ccusage itself works
+	us.state.IsAvailable = true    // ccusage itself works
 	us.state.Status = models.Green // $0.00 is Green status
 	us.lastQuery = now
 }
 
 // ResetDaily resets counters for a new day
 // Called automatically at midnight or manually by user
-// Returns error only for system clock issues
+// Returns error only for system clock issues.
 func (us *UsageService) ResetDaily() error {
 	us.state.Reset()
 	us.lastQuery = time.Time{} // Clear cache
@@ -112,7 +116,7 @@ func (us *UsageService) ResetDaily() error {
 
 // IsAvailable checks if ccusage is accessible
 // Performs quick validation without full query
-// Returns false if binary not found or not executable
+// Returns false if binary not found or not executable.
 func (us *UsageService) IsAvailable() bool {
 	if us.ccusagePath == "" {
 		return false
@@ -135,7 +139,7 @@ func (us *UsageService) IsAvailable() bool {
 
 // SetCCUsagePath updates the path to ccusage binary
 // Validates that the new path is executable
-// Returns error if path is invalid or not executable
+// Returns error if path is invalid or not executable.
 func (us *UsageService) SetCCUsagePath(path string) error {
 	if path == "" {
 		return lib.ValidationError("ccusage path cannot be empty")
@@ -152,16 +156,17 @@ func (us *UsageService) SetCCUsagePath(path string) error {
 	return nil
 }
 
-// SetThresholds updates the alert thresholds and recalculates status
+// SetThresholds updates the alert thresholds and recalculates status.
 func (us *UsageService) SetThresholds(yellowThreshold, redThreshold float64) {
 	us.state.UpdateStatus(yellowThreshold, redThreshold)
 }
 
-// T025: Connect to ccusage binary with retry logic
+// T025: Connect to ccusage binary with retry logic.
 func (us *UsageService) updateWithRetry(maxRetries int) (*models.UsageState, error) {
 	return us.performUpdate(maxRetries)
 }
 
+//nolint:funlen // This orchestration function coordinates retries, parsing, and logging in one place for clarity.
 func (us *UsageService) performUpdate(maxRetries int) (*models.UsageState, error) {
 	if maxRetries < 1 {
 		maxRetries = 1
@@ -259,15 +264,15 @@ func (us *UsageService) performUpdate(maxRetries int) (*models.UsageState, error
 
 		us.applyUsageData(ccusageOutput)
 
-		context := map[string]interface{}{
+		logContext := map[string]interface{}{
 			"totalTokens": ccusageOutput.TotalTokens,
 			"totalCost":   ccusageOutput.TotalCost,
 			"date":        ccusageOutput.Date,
 		}
 		if maxRetries > 1 {
-			context["attempt"] = attempt
+			logContext["attempt"] = attempt
 		}
-		us.logger.Info("Successfully parsed ccusage data", context)
+		us.logger.Info("Successfully parsed ccusage data", logContext)
 
 		return us.state, nil
 	}
@@ -283,7 +288,12 @@ func (us *UsageService) executeCCUsage() ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), us.cmdTimeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, us.ccusagePath, "daily", "--json")
+	// Resolve executable path to a concrete binary to avoid executing unexpected commands.
+	resolvedPath, lookErr := exec.LookPath(us.ccusagePath)
+	if lookErr != nil {
+		return nil, lookErr
+	}
+	cmd := exec.CommandContext(ctx, resolvedPath, "daily", "--json") // #nosec G204 validated by LookPath
 	output, err := cmd.Output()
 	if err != nil {
 		return output, err
@@ -331,17 +341,17 @@ func (us *UsageService) applyUsageData(output CCUsageOutput) {
 }
 
 func (us *UsageService) logCommandFailure(err error, output []byte, extra map[string]interface{}) {
-	context := map[string]interface{}{
+	logContext := map[string]interface{}{
 		"error":   err.Error(),
 		"out_len": len(output),
 		"output":  truncateOutput(output),
 		"path":    us.ccusagePath,
 	}
 	for k, v := range extra {
-		context[k] = v
+		logContext[k] = v
 	}
 
-	us.logger.Warn("ccusage command failed", context)
+	us.logger.Warn("ccusage command failed", logContext)
 }
 
 func truncateOutput(output []byte) string {
@@ -355,7 +365,7 @@ func (us *UsageService) sleepForRetry(attempt int) {
 	time.Sleep(time.Duration(attempt) * time.Second)
 }
 
-// T030: Polling timer with configurable interval
+// StartPolling starts polling with a configurable interval.
 func (us *UsageService) StartPolling(intervalSeconds int, callback func(*models.UsageState)) error {
 	if intervalSeconds <= 0 {
 		return lib.ValidationError("polling interval must be positive")
@@ -379,7 +389,7 @@ func (us *UsageService) StartPolling(intervalSeconds int, callback func(*models.
 	return nil
 }
 
-// StopPolling stops the polling timer
+// StopPolling stops the polling timer.
 func (us *UsageService) StopPolling() {
 	select {
 	case us.pollStopChan <- struct{}{}:
@@ -400,7 +410,7 @@ func (us *UsageService) StopPolling() {
 	us.logger.Info("Usage polling stopped")
 }
 
-// pollingLoop runs the polling loop in a goroutine
+// pollingLoop runs the polling loop in a goroutine.
 func (us *UsageService) pollingLoop() {
 	us.mutex.RLock()
 	if us.ticker == nil {
@@ -416,7 +426,7 @@ func (us *UsageService) pollingLoop() {
 		case <-ticker.C:
 			us.logger.Debug("Polling timer triggered")
 
-			state, err := us.updateWithRetry(3) // 3 retries for polling
+			state, err := us.updateWithRetry(pollingRetryCount)
 			if err != nil {
 				us.logger.Error("Polling update failed", map[string]interface{}{
 					"error": err.Error(),
@@ -434,13 +444,13 @@ func (us *UsageService) pollingLoop() {
 	}
 }
 
-// T031: Daily reset scheduler with midnight detection
+// StartDailyResetMonitor starts the daily reset scheduler with midnight detection.
 func (us *UsageService) StartDailyResetMonitor() {
 	go us.dailyResetLoop()
 	us.logger.Info("Daily reset monitor started")
 }
 
-// dailyResetLoop monitors for midnight and resets daily counters
+// dailyResetLoop monitors for midnight and resets daily counters.
 func (us *UsageService) dailyResetLoop() {
 	lastResetDay := time.Now().Day()
 	resetChecker := time.NewTicker(1 * time.Minute)
@@ -450,25 +460,31 @@ func (us *UsageService) dailyResetLoop() {
 		select {
 		case <-resetChecker.C:
 			now := time.Now()
-			if now.Day() != lastResetDay {
-				us.logger.Info("Daily reset triggered", map[string]interface{}{
-					"newDay":       now.Format("2006-01-02"),
-					"lastResetDay": lastResetDay,
-				})
-
-				if err := us.ResetDaily(); err != nil {
-					us.logger.Error("Daily reset failed", map[string]interface{}{
-						"error": err.Error(),
-					})
-				} else {
-					us.logger.Info("Daily usage reset successfully")
-					if us.updateCallback != nil {
-						state, _ := us.GetDailyUsage()
-						us.updateCallback(state)
-					}
-				}
-				lastResetDay = now.Day()
+			if now.Day() == lastResetDay {
+				break
 			}
+			us.logger.Info("Daily reset triggered", map[string]interface{}{
+				"newDay":       now.Format("2006-01-02"),
+				"lastResetDay": lastResetDay,
+			})
+
+			if err := us.ResetDaily(); err != nil {
+				us.logger.Error("Daily reset failed", map[string]interface{}{
+					"error": err.Error(),
+				})
+				lastResetDay = now.Day()
+				break
+			}
+
+			us.logger.Info("Daily usage reset successfully")
+			if us.updateCallback != nil {
+				state, err := us.GetDailyUsage()
+				if err != nil {
+					us.logger.Error("Post-reset usage fetch failed", map[string]interface{}{"error": err.Error()})
+				}
+				us.updateCallback(state)
+			}
+			lastResetDay = now.Day()
 
 		case <-us.resetStopChan:
 			us.logger.Debug("Daily reset loop stopped")

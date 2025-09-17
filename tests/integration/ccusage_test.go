@@ -4,11 +4,11 @@ import (
 	"os/exec"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-
 	"cc-dailyuse-bar/src/models"
 	"cc-dailyuse-bar/src/services"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // T009: Integration test for ccusage command execution and parsing

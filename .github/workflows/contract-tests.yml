@@ -1,0 +1,60 @@
+name: Contract Tests
+
+on:
+  push:
+    branches: [ master, develop ]
+  pull_request:
+    branches: [ master, develop ]
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  contract-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: ./.github/actions/setup-go
+
+      - name: Build application
+        run: go build -v -o cc-dailyuse-bar ./src
+
+      - name: Run contract tests
+        uses: ./.github/actions/run-tests
+        with:
+          test-paths: './tests/contract/...'
+          test-tags: 'contract'
+          race-detection: 'true'
+          coverage-profile: 'contract-coverage.out'
+          timeout: '20m'
+          upload-coverage: 'true'
+          coverage-flags: 'contract'
+
+  contract-tests-parallel:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        test-suite: [
+          'config_service_test.go',
+          'usage_service_test.go'
+        ]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: ./.github/actions/setup-go
+
+      - name: Build application
+        run: go build -v -o cc-dailyuse-bar ./src
+
+      - name: Run specific contract test suite
+        uses: ./.github/actions/run-tests
+        with:
+          test-paths: './tests/contract/${{ matrix.test-suite }}'
+          test-tags: 'contract'
+          race-detection: 'false'
+          timeout: '10m'
+          upload-coverage: 'false'

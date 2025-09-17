@@ -3,11 +3,11 @@ package unit
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-
 	"cc-dailyuse-bar/src/models"
 	"cc-dailyuse-bar/src/services"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // T032: Unit tests for Config validation

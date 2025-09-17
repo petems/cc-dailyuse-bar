@@ -1,0 +1,78 @@
+name: 'Run Go Tests'
+description: 'Run Go tests with coverage and optional race detection'
+inputs:
+  test-paths:
+    description: 'Test paths to run (e.g., ./src/... ./tests/unit/...)'
+    required: true
+  test-tags:
+    description: 'Build tags for tests (e.g., integration, contract)'
+    required: false
+    default: ''
+  race-detection:
+    description: 'Enable race detection'
+    required: false
+    default: 'true'
+  coverage-profile:
+    description: 'Coverage profile filename'
+    required: false
+    default: 'coverage.out'
+  timeout:
+    description: 'Test timeout'
+    required: false
+    default: '10m'
+  upload-coverage:
+    description: 'Upload coverage to Codecov'
+    required: false
+    default: 'false'
+  coverage-flags:
+    description: 'Coverage flags for Codecov'
+    required: false
+    default: ''
+
+outputs:
+  coverage-file:
+    description: 'Path to coverage file'
+    value: ${{ steps.test.outputs.coverage-file }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Run tests
+      id: test
+      shell: bash
+      run: |
+        TEST_CMD="go test -v"
+        
+        if [ "${{ inputs.race-detection }}" = "true" ]; then
+          TEST_CMD="$TEST_CMD -race"
+        fi
+        
+        if [ -n "${{ inputs.test-tags }}" ]; then
+          TEST_CMD="$TEST_CMD -tags=${{ inputs.test-tags }}"
+        fi
+        
+        TEST_CMD="$TEST_CMD -timeout=${{ inputs.timeout }}"
+        TEST_CMD="$TEST_CMD -coverprofile=${{ inputs.coverage-profile }}"
+        TEST_CMD="$TEST_CMD ${{ inputs.test-paths }}"
+        
+        echo "Running: $TEST_CMD"
+        $TEST_CMD
+        
+        echo "coverage-file=${{ inputs.coverage-profile }}" >> $GITHUB_OUTPUT
+
+    - name: Show coverage
+      shell: bash
+      run: go tool cover -func=${{ inputs.coverage-profile }}
+
+    - name: Generate HTML coverage report
+      shell: bash
+      run: go tool cover -html=${{ inputs.coverage-profile }} -o coverage.html
+
+    - name: Upload coverage to Codecov
+      if: inputs.upload-coverage == 'true'
+      uses: codecov/codecov-action@v4
+      with:
+        file: ${{ inputs.coverage-profile }}
+        flags: ${{ inputs.coverage-flags }}
+        name: codecov-umbrella
+        fail_ci_if_error: false

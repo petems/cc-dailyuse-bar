@@ -1,3 +1,4 @@
+// Package lib provides shared utilities like error handling and logging.
 package lib
 
 import (
@@ -5,19 +6,19 @@ import (
 	"text/template"
 )
 
-// TemplateEngine provides template execution with validation and error handling
+// TemplateEngine provides template execution with validation and error handling.
 type TemplateEngine struct {
 	logger *Logger
 }
 
-// NewTemplateEngine creates a new template engine
+// NewTemplateEngine creates a new template engine.
 func NewTemplateEngine() *TemplateEngine {
 	return &TemplateEngine{
 		logger: NewLogger("template"),
 	}
 }
 
-// Execute executes a template string with the provided data
+// Execute executes a template string with the provided data.
 func (te *TemplateEngine) Execute(templateStr string, data interface{}) (string, error) {
 	if templateStr == "" {
 		return "", TemplateError("template string cannot be empty")
@@ -54,7 +55,7 @@ func (te *TemplateEngine) Execute(templateStr string, data interface{}) (string,
 	return result, nil
 }
 
-// Validate validates a template string without executing it
+// Validate validates a template string without executing it.
 func (te *TemplateEngine) Validate(templateStr string) error {
 	if templateStr == "" {
 		return TemplateError("template string cannot be empty")
@@ -76,7 +77,7 @@ func (te *TemplateEngine) Validate(templateStr string) error {
 	return nil
 }
 
-// ExecuteWithDefault executes a template and returns a default value on error
+// ExecuteWithDefault executes a template and returns a default value on error.
 func (te *TemplateEngine) ExecuteWithDefault(templateStr string, data interface{}, defaultValue string) string {
 	result, err := te.Execute(templateStr, data)
 	if err != nil {
@@ -90,20 +91,20 @@ func (te *TemplateEngine) ExecuteWithDefault(templateStr string, data interface{
 	return result
 }
 
-// Global template engine instance
+// Global template engine instance.
 var globalTemplateEngine = NewTemplateEngine()
 
-// ExecuteTemplate executes a template using the global engine
+// ExecuteTemplate executes a template using the global engine.
 func ExecuteTemplate(templateStr string, data interface{}) (string, error) {
 	return globalTemplateEngine.Execute(templateStr, data)
 }
 
-// ValidateTemplate validates a template using the global engine
+// ValidateTemplate validates a template using the global engine.
 func ValidateTemplate(templateStr string) error {
 	return globalTemplateEngine.Validate(templateStr)
 }
 
-// ExecuteTemplateWithDefault executes a template with default using the global engine
+// ExecuteTemplateWithDefault executes a template with default using the global engine.
 func ExecuteTemplateWithDefault(templateStr string, data interface{}, defaultValue string) string {
 	return globalTemplateEngine.ExecuteWithDefault(templateStr, data, defaultValue)
 }

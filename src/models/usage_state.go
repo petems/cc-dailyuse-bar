@@ -1,8 +1,9 @@
+// Package models contains domain models and configuration types.
 package models
 
 import "time"
 
-// UsageState represents the current usage tracking state
+// UsageState represents the current usage tracking state.
 type UsageState struct {
 	LastUpdate  time.Time   `json:"last_update"`
 	LastReset   time.Time   `json:"last_reset"`
@@ -12,7 +13,7 @@ type UsageState struct {
 	IsAvailable bool        `json:"is_available"`
 }
 
-// NewUsageState creates a new UsageState with default values
+// NewUsageState creates a new UsageState with default values.
 func NewUsageState() *UsageState {
 	now := time.Now()
 	return &UsageState{
@@ -25,7 +26,7 @@ func NewUsageState() *UsageState {
 	}
 }
 
-// UpdateStatus calculates and updates the alert status based on cost thresholds
+// UpdateStatus calculates and updates the alert status based on cost thresholds.
 func (u *UsageState) UpdateStatus(yellowThreshold, redThreshold float64) {
 	if u.DailyCost >= redThreshold {
 		u.Status = Red
@@ -36,7 +37,7 @@ func (u *UsageState) UpdateStatus(yellowThreshold, redThreshold float64) {
 	}
 }
 
-// Reset resets the daily counters while preserving other state
+// Reset resets the daily counters while preserving other state.
 func (u *UsageState) Reset() {
 	u.DailyCount = 0
 	u.DailyCost = 0.0

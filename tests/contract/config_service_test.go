@@ -3,11 +3,11 @@ package contract
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-
 	"cc-dailyuse-bar/src/models"
 	"cc-dailyuse-bar/src/services"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestConfigService_Load(t *testing.T) {
@@ -23,7 +23,7 @@ func TestConfigService_Load(t *testing.T) {
 	// Note: Load() returns defaults when no config file exists
 	// The actual values depend on whether a config file was previously saved
 	assert.NotEmpty(t, config.CCUsagePath)
-	assert.Greater(t, config.UpdateInterval, 0)
+	assert.Positive(t, config.UpdateInterval)
 	assert.Greater(t, config.YellowThreshold, 0.0)
 	assert.Greater(t, config.RedThreshold, config.YellowThreshold)
 	assert.NotEmpty(t, config.DebugLevel)

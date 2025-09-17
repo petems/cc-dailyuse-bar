@@ -1,0 +1,36 @@
+name: 'Setup Go Environment'
+description: 'Setup Go environment with optional golangci-lint installation'
+inputs:
+  go-version:
+    description: 'Go version to use'
+    required: false
+    default: '1.23'
+  install-lint:
+    description: 'Install golangci-lint'
+    required: false
+    default: 'false'
+  lint-version:
+    description: 'golangci-lint version'
+    required: false
+    default: 'v1.54.2'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Go
+      id: setup-go
+      uses: actions/setup-go@v5
+      with:
+        go-version: ${{ inputs.go-version }}
+        cache: true
+
+    - name: Install golangci-lint
+      if: inputs.install-lint == 'true'
+      shell: bash
+      run: |
+        curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b "$(go env GOPATH)/bin" ${{ inputs.lint-version }}
+
+    - name: Add golangci-lint to PATH
+      if: inputs.install-lint == 'true'
+      shell: bash
+      run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"

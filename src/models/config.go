@@ -1,3 +1,4 @@
+// Package models contains domain models and configuration types.
 package models
 
 import (
@@ -6,7 +7,15 @@ import (
 	"cc-dailyuse-bar/src/lib"
 )
 
-// Config represents the application configuration structure
+const (
+	defaultUpdateIntervalSeconds = 30
+	defaultYellowThresholdUSD    = 10.00
+	defaultRedThresholdUSD       = 20.00
+	defaultCacheWindowSeconds    = 10
+	defaultCmdTimeoutSeconds     = 5
+)
+
+// Config represents the application configuration structure.
 type Config struct {
 	CCUsagePath     string  `yaml:"ccusage_path"`
 	UpdateInterval  int     `yaml:"update_interval"`
@@ -17,21 +26,21 @@ type Config struct {
 	CmdTimeout      int     `yaml:"cmd_timeout"`  // Command timeout in seconds
 }
 
-// ConfigDefaults returns a Config struct with default values
+// ConfigDefaults returns a Config struct with default values.
 func ConfigDefaults() *Config {
 	return &Config{
 		CCUsagePath:     "ccusage",
-		UpdateInterval:  30,
-		YellowThreshold: 10.00,
-		RedThreshold:    20.00,
+		UpdateInterval:  defaultUpdateIntervalSeconds,
+		YellowThreshold: defaultYellowThresholdUSD,
+		RedThreshold:    defaultRedThresholdUSD,
 		DebugLevel:      "INFO",
-		CacheWindow:     10, // 10 seconds cache window
-		CmdTimeout:      5,  // 5 seconds command timeout
+		CacheWindow:     defaultCacheWindowSeconds, // 10 seconds cache window
+		CmdTimeout:      defaultCmdTimeoutSeconds,  // 5 seconds command timeout
 	}
 }
 
 // Validate checks configuration values for correctness
-// Returns error describing first validation failure found
+// Returns error describing first validation failure found.
 func (c *Config) Validate() error {
 	// Validate required fields
 	if c.CCUsagePath == "" {
@@ -82,20 +91,20 @@ func (c *Config) Validate() error {
 }
 
 // GetLogLevel converts the debug level string to a LogLevel enum
-// Returns INFO level if the string is invalid
+// Returns INFO level if the string is invalid.
 func (c *Config) GetLogLevel() int {
 	switch strings.ToUpper(c.DebugLevel) {
 	case "DEBUG":
-		return 0 // DEBUG
+		return int(lib.DEBUG)
 	case "INFO":
-		return 1 // INFO
+		return int(lib.INFO)
 	case "WARN":
-		return 2 // WARN
+		return int(lib.WARN)
 	case "ERROR":
-		return 3 // ERROR
+		return int(lib.ERROR)
 	case "FATAL":
-		return 4 // FATAL
+		return int(lib.FATAL)
 	default:
-		return 1 // Default to INFO
+		return int(lib.INFO) // Default to INFO
 	}
 }

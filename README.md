@@ -25,7 +25,7 @@ The application displays in your system tray as:
 
 ### Prerequisites
 
-- Go 1.21 or later
+- Go 1.23 or later
 - `ccusage` binary installed and accessible in PATH
 - macOS, Linux, or Windows
 
@@ -228,7 +228,7 @@ make check
 ## Requirements
 
 - **ccusage**: The application requires the `ccusage` binary to be installed and accessible
-- **Go**: Version 1.21 or later for building from source
+- **Go**: Version 1.23 or later for building from source
 - **Platform**: macOS, Linux, or Windows
 
 ## Troubleshooting

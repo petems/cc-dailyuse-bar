@@ -1,0 +1,132 @@
+name: Build (Improved)
+
+on:
+  push:
+    branches: [ master, develop ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ master, develop ]
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        go-version: ['1.23']
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: ./.github/actions/setup-go
+        with:
+          go-version: ${{ matrix.go-version }}
+
+      - name: Build application
+        run: |
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            go build -v -ldflags "-s -w" -o cc-dailyuse-bar.exe ./src
+          else
+            go build -v -ldflags "-s -w" -o cc-dailyuse-bar ./src
+          fi
+
+      - name: Test build
+        run: |
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            ./cc-dailyuse-bar.exe --help || true
+          else
+            ./cc-dailyuse-bar --help || true
+          fi
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: cc-dailyuse-bar-${{ runner.os }}-${{ matrix.go-version }}
+          path: |
+            cc-dailyuse-bar
+            cc-dailyuse-bar.exe
+          retention-days: 30
+
+  build-cross-platform:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - os: linux
+            arch: amd64
+            goos: linux
+            goarch: amd64
+          - os: linux
+            arch: arm64
+            goos: linux
+            goarch: arm64
+          - os: windows
+            arch: amd64
+            goos: windows
+            goarch: amd64
+          - os: darwin
+            arch: amd64
+            goos: darwin
+            goarch: amd64
+          - os: darwin
+            arch: arm64
+            goos: darwin
+            goarch: arm64
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: ./.github/actions/setup-go
+
+      - name: Build for ${{ matrix.os }}-${{ matrix.arch }}
+        run: |
+          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} CGO_ENABLED=0 go build -v -ldflags "-s -w" -o cc-dailyuse-bar-${{ matrix.os }}-${{ matrix.arch }} ./src
+
+      - name: Upload cross-platform build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: cc-dailyuse-bar-${{ matrix.os }}-${{ matrix.arch }}
+          path: cc-dailyuse-bar-${{ matrix.os }}-${{ matrix.arch }}
+          retention-days: 30
+
+  build-release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    needs: [build, build-cross-platform]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Create release archive
+        run: |
+          mkdir -p release
+          for dir in cc-dailyuse-bar-*; do
+            if [ -d "$dir" ]; then
+              cp "$dir"/* release/ 2>/dev/null || true
+            fi
+          done
+          cd release
+          tar -czf ../cc-dailyuse-bar-${{ github.ref_name }}-linux-amd64.tar.gz cc-dailyuse-bar-linux-amd64
+          tar -czf ../cc-dailyuse-bar-${{ github.ref_name }}-linux-arm64.tar.gz cc-dailyuse-bar-linux-arm64
+          tar -czf ../cc-dailyuse-bar-${{ github.ref_name }}-darwin-amd64.tar.gz cc-dailyuse-bar-darwin-amd64
+          tar -czf ../cc-dailyuse-bar-${{ github.ref_name }}-darwin-arm64.tar.gz cc-dailyuse-bar-darwin-arm64
+          zip ../cc-dailyuse-bar-${{ github.ref_name }}-windows-amd64.zip cc-dailyuse-bar-windows-amd64.exe
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            cc-dailyuse-bar-${{ github.ref_name }}-linux-amd64.tar.gz
+            cc-dailyuse-bar-${{ github.ref_name }}-linux-arm64.tar.gz
+            cc-dailyuse-bar-${{ github.ref_name }}-darwin-amd64.tar.gz
+            cc-dailyuse-bar-${{ github.ref_name }}-darwin-arm64.tar.gz
+            cc-dailyuse-bar-${{ github.ref_name }}-windows-amd64.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

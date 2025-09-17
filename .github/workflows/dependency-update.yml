@@ -1,0 +1,51 @@
+name: Dependency Update
+
+on:
+  schedule:
+    - cron: '0 4 * * 1'  # Run weekly on Monday at 4 AM
+  workflow_dispatch:
+
+jobs:
+  update-dependencies:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Go
+        uses: ./.github/actions/setup-go
+
+      - name: Update dependencies
+        run: |
+          go get -u ./...
+          go mod tidy
+
+      - name: Check for changes
+        id: changes
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "changes=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changes=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create Pull Request
+        if: steps.changes.outputs.changes == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: 'chore: update dependencies'
+          title: 'chore: update dependencies'
+          body: |
+            This PR updates Go dependencies to their latest versions.
+            
+            ## Changes
+            - Updated Go module dependencies
+            - Ran `go mod tidy` to clean up dependencies
+            
+            ## Testing
+            Please review and test the changes before merging.
+          branch: dependency-update
+          delete-branch: true

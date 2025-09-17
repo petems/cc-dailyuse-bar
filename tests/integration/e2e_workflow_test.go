@@ -5,15 +5,15 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-
 	"cc-dailyuse-bar/src/models"
 	"cc-dailyuse-bar/src/services"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // T012: E2E test for complete user workflow from installation to monitoring
-// Adjusted to exclude GUI/Fyne usage
+// Adjusted to exclude GUI/Fyne usage.
 func TestCompleteUserWorkflow(t *testing.T) {
 	// Skip in short mode as this is a comprehensive test
 	if testing.Short() {
@@ -191,9 +191,9 @@ func TestUserErrorScenarios(t *testing.T) {
 
 		// Create invalid config file
 		configPath := configService.GetConfigPath()
-		os.MkdirAll(filepath.Dir(configPath), 0755)
+		os.MkdirAll(filepath.Dir(configPath), 0o755)
 		invalidYAML := "invalid: yaml: content: {"
-		err := os.WriteFile(configPath, []byte(invalidYAML), 0644)
+		err := os.WriteFile(configPath, []byte(invalidYAML), 0o644)
 		require.NoError(t, err)
 
 		// Attempt to load - should recover with defaults

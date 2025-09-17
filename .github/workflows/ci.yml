@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [ master, develop ]
+  pull_request:
+    branches: [ master, develop ]
+  workflow_dispatch:
+
+jobs:
+  # Quick checks that can run in parallel
+  lint:
+    uses: ./.github/workflows/lint.yml
+
+  fmt:
+    uses: ./.github/workflows/fmt.yml
+
+  # Unit tests (fastest)
+  unit-tests:
+    uses: ./.github/workflows/unit-tests.yml
+
+  # Security scanning (can run in parallel with other tests)
+  security:
+    uses: ./.github/workflows/security.yml
+
+  # Integration tests (slower, run after unit tests pass)
+  integration-tests:
+    needs: [unit-tests]
+    uses: ./.github/workflows/integration-tests.yml
+
+  # Contract tests (run after integration tests)
+  contract-tests:
+    needs: [integration-tests]
+    uses: ./.github/workflows/contract-tests.yml
+
+  # Build (run after all tests pass)
+  build:
+    needs: [lint, fmt, unit-tests, integration-tests, contract-tests, security]
+    uses: ./.github/workflows/build.yml
+
+  # Summary job
+  ci-summary:
+    runs-on: ubuntu-latest
+    needs: [lint, fmt, unit-tests, integration-tests, contract-tests, security, build]
+    if: always()
+    steps:
+      - name: CI Summary
+        run: |
+          {
+            echo "## CI Pipeline Summary"
+            echo "| Job | Status |"
+            echo "|-----|--------|"
+            echo "| Lint | ${{ needs.lint.result }} |"
+            echo "| Format | ${{ needs.fmt.result }} |"
+            echo "| Unit Tests | ${{ needs.unit-tests.result }} |"
+            echo "| Integration Tests | ${{ needs.integration-tests.result }} |"
+            echo "| Contract Tests | ${{ needs.contract-tests.result }} |"
+            echo "| Security | ${{ needs.security.result }} |"
+            echo "| Build | ${{ needs.build.result }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          
+          if [[ "${{ needs.lint.result }}" == "failure" || "${{ needs.fmt.result }}" == "failure" || "${{ needs.unit-tests.result }}" == "failure" || "${{ needs.integration-tests.result }}" == "failure" || "${{ needs.contract-tests.result }}" == "failure" || "${{ needs.security.result }}" == "failure" || "${{ needs.build.result }}" == "failure" ]]; then
+            echo "❌ CI Pipeline failed" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          else
+            echo "✅ CI Pipeline passed" >> "$GITHUB_STEP_SUMMARY"
+          fi

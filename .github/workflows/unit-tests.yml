@@ -1,0 +1,51 @@
+name: Unit Tests (Improved)
+
+on:
+  push:
+    branches: [ master, develop ]
+  pull_request:
+    branches: [ master, develop ]
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go-version: ['1.23']
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: ./.github/actions/setup-go
+        with:
+          go-version: ${{ matrix.go-version }}
+
+      - name: Run unit tests with coverage
+        id: test
+        uses: ./.github/actions/run-tests
+        with:
+          test-paths: './src/... ./tests/unit/...'
+          race-detection: 'true'
+          coverage-profile: 'unit-coverage.out'
+          upload-coverage: 'true'
+          coverage-flags: 'unittests'
+
+  unit-tests-race:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: ./.github/actions/setup-go
+
+      - name: Run unit tests with race detection
+        uses: ./.github/actions/run-tests
+        with:
+          test-paths: './src/... ./tests/unit/...'
+          race-detection: 'true'
+          timeout: '10m'
+          upload-coverage: 'false'

@@ -1,34 +1,265 @@
+# golangci-lint configuration for v2.3.0
+# Based on master branch with selective v2.3.0 improvements
+
 version: "2"
 
 run:
+  issues-exit-code: 1
+  tests: true
   timeout: 5m
-  modules-download-mode: readonly
+  go: '1.23'
 
 linters:
   enable:
-    - govet
-    - revive
-    - ineffassign
+    # Core linters (from master)
+    - bodyclose
+    - depguard
+    - dogsled
+    - dupl
+    - exhaustive
+    - funlen
+    - goconst
+    - gocritic
+    - gocyclo
+    - goprintffuncname
+    - gosec
     - misspell
-    - unused
+    - mnd
+    - nakedret
+    - noctx
+    - nolintlint
+    - revive
+    - rowserrcheck
     - staticcheck
+    - unconvert
+    - unparam
+    - whitespace
+
+    # New useful linters from v2.3.0
+    - asasalint # checks for pass []any as any in variadic func(...any)
+    - copyloopvar # detects places where loop variables are copied (Go 1.22+)
+    - errcheck # checking for unchecked errors
+    - errname # checks that sentinel errors are prefixed with the Err
+    - errorlint # finds code that will cause problems with error wrapping
+    - fatcontext # detects nested contexts in loops
+    - gocheckcompilerdirectives # validates go compiler directive comments
+    - godot # checks if comments end in a period
+    - govet # reports suspicious constructs
+    - ineffassign # detects when assignments to existing variables are not used
+    - makezero # finds slice declarations with non-zero initial length
+    - musttag # enforces field tags in (un)marshaled structs
+    - nestif # reports deeply nested if statements
+    - nilerr # finds the code that returns nil even if it checks that the error is not nil
+    - nilnil # checks that there is no simultaneous return of nil error and an invalid value
+    - nosprintfhostport # checks for misuse of Sprintf to construct a host with port
+    - perfsprint # checks that fmt.Sprintf can be replaced with a faster alternative
+    - predeclared # finds code that shadows one of Go's predeclared identifiers
+    - reassign # checks that package variables are not reassigned
+    - testableexamples # checks if examples are testable
+    - testifylint # checks usage of github.com/stretchr/testify
+    - tparallel # detects inappropriate usage of t.Parallel() method
+    - unused # checks for unused constants, variables, functions and types
+    - usestdlibvars # detects the possibility to use variables/constants from Go stdlib
+    - wastedassign # finds wasted assignment statements
+
+  disable:
+    - gochecknoglobals # Allow global variables (needed for CLI app)
+    - gochecknoinits # Allow init functions (common in CLI apps)
+    - lll # Remove line length limit (replaced with golines)
+
   settings:
-    govet:
-      enable-all: true
-    revive:
+    depguard:
       rules:
-        - name: exported
+        main:
+          files:
+            - "src/main.go"
+            - "cmd/**/*.go"
+            - "internal/**/*.go"
+          allow:
+            - $gostd
+            - cc-dailyuse-bar
+
+        test:
+          files:
+            - "**/*_test.go"
+          allow:
+            - $gostd
+            - cc-dailyuse-bar
+            - github.com/stretchr/testify
+            - github.com/adrg/xdg
+
+    dupl:
+      threshold: 100
+
+    errcheck:
+      # Report about not checking of errors in type assertions: `a := b.(MyStruct)`.
+      # Default: false
+      check-type-assertions: true
+      # Report about assignment of errors to blank identifier.
+      # Default: false
+      check-blank: true
+
+    exhaustive:
+      # Program elements to check for exhaustiveness.
+      # Default: [ switch ]
+      check:
+        - switch
+        - map
+
+    funlen:
+      # Checks the number of lines in a function.
+      # Default: 60
+      lines: 95
+      # Checks the number of statements in a function.
+      # Default: 40
+      statements: 50
+
+    goconst:
+      # Minimal string literal length to detect.
+      # Default: 3
+      min-len: 3
+      # Minimal occurrences count for string literal to detect.
+      # Default: 3
+      min-occurrences: 3
+
+    gocritic:
+      # Disable specific checks that are too noisy for CLI apps
+      disabled-checks:
+        - wrapperFunc
+        - dupImport
+        - ifElseChain
+      # Enable specific diagnostic tags
+      enabled-tags:
+        - performance
+        - style
+        - experimental
+        - diagnostic
+
+
+    gocyclo:
+      # Minimal code complexity to report.
+      # Default: 30
+      min-complexity: 20
+
+    govet:
+      # Enable all analyzers.
+      # Default: false
+      enable-all: true
+      # Disable analyzers by name.
+      disable:
+        - fieldalignment # too strict for CLI tool
+
+    mnd:
+      checks:
+        - argument
+        - case
+        - condition
+        - operation
+        - return
+        - assign
+
+    nakedret:
+      # Make an issue if func has more lines of code than this setting, and it has naked returns.
+      # Default: 30
+      max-func-lines: 15
+
+    nestif:
+      # Minimal complexity of if statements to report.
+      # Default: 5
+      min-complexity: 7
+
+    revive:
+      confidence: 0.8
+      enable-all-rules: false
+      rules:
+        - name: error-naming
+        - name: error-return
+        - name: error-strings
+        - name: errorf
+        - name: increment-decrement
+        - name: indent-error-flow
+        - name: range
+        - name: receiver-naming
+        - name: redefines-builtin-id
+        - name: superfluous-else
+        - name: time-naming
+        - name: unreachable-code
+        - name: unused-parameter
+        - name: var-declaration
+        - name: var-naming
+
+
+    staticcheck:
+      # Enable all checks.
+      # Default: ["*"]
+      checks: ["all"]
+
+    testifylint:
+      # Enable all checkers (https://github.com/Antonboom/testifylint#checkers).
+      # Default: false
+      enable-all: true
+  musttag:
+    tags:
+      - yaml
+      - json
+
+    unparam:
+      # Check exported functions.
+      # Default: false
+      check-exported: false
+
+  exclusions:
+    generated: lax
+    rules:
+      - path: _test\.go
+        linters:
+          - gocyclo
+          - dupl
+          - gosec
+          - funlen
+          - gocognit
+          - cyclop
+
+
+
+    # Exclude specific paths from linting
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+
+issues:
+  # Maximum count of issues with the same text.
+  # Set to 0 to disable.
+  # Default: 3
+  max-same-issues: 10
+  # Maximum count of issues per one linter.
+  # Set to 0 to disable.
+  # Default: 0
+  max-issues-per-linter: 0
+  # Show only new issues: if there are unstaged changes or untracked files,
+  # only those changes are analyzed, e.g. if you have unstaged changes out of 10 files,
+  # only those 10 files will be analyzed. It's a super-fast way to execute golangci-lint
+  # in existing codebase. It's not enabled by default because the full set of issues
+  # should be fixed, and the cache should be warmed up.
+  # Default: false
+  new: false
 
 formatters:
   enable:
-    - gofmt
+    - gofumpt
     - goimports
   settings:
-    gofmt:
-      simplify: true
     goimports:
-      local-prefixes: [cc-dailyuse-bar]
+      local-prefixes:
+        - cc-dailyuse-bar
 
-issues:
-  max-issues-per-linter: 0
-  max-same-issues: 0
+output:
+  # Show statistics per linter.
+  # Default: true
+  show-stats: true
+  # Sort results by: file, linter, and severity.
+  # Default: ["linter", "file"]
+  sort-order:
+    - linter
+    - file
