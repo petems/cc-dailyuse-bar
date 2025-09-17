@@ -28,7 +28,7 @@ type UsageService struct {
 	updateCallback func(*models.UsageState)
 	ccusagePath    string
 	cacheWindow    time.Duration
-	mutex          sync.RWMutex // Protect ticker access
+	mutex          sync.RWMutex // Protect shared state access
 	cmdTimeout     time.Duration
 }
 
@@ -65,9 +65,14 @@ type CCUsageResponse struct {
 // Returns cached data if last query was within cache window
 // Returns error if ccusage is unavailable or returns invalid data
 func (us *UsageService) GetDailyUsage() (*models.UsageState, error) {
+	us.mutex.RLock()
 	if time.Since(us.lastQuery) < us.cacheWindow && us.state.IsAvailable {
-		return us.state, nil
+		// Return a copy to avoid concurrent access to the returned state
+		stateCopy := *us.state
+		us.mutex.RUnlock()
+		return &stateCopy, nil
 	}
+	us.mutex.RUnlock()
 
 	return us.UpdateUsage()
 }
@@ -81,6 +86,8 @@ func (us *UsageService) UpdateUsage() (*models.UsageState, error) {
 
 // setUnknownState marks the usage data as unavailable/unknown
 func (us *UsageService) setUnknownState() {
+	us.mutex.Lock()
+	defer us.mutex.Unlock()
 	now := time.Now()
 	us.state.DailyCount = 0
 	us.state.DailyCost = 0.0
@@ -92,6 +99,8 @@ func (us *UsageService) setUnknownState() {
 
 // setNoDataForToday sets state for when ccusage works but has no data for today
 func (us *UsageService) setNoDataForToday() {
+	us.mutex.Lock()
+	defer us.mutex.Unlock()
 	now := time.Now()
 	us.state.DailyCount = 0
 	us.state.DailyCost = 0.0
@@ -105,6 +114,8 @@ func (us *UsageService) setNoDataForToday() {
 // Called automatically at midnight or manually by user
 // Returns error only for system clock issues
 func (us *UsageService) ResetDaily() error {
+	us.mutex.Lock()
+	defer us.mutex.Unlock()
 	us.state.Reset()
 	us.lastQuery = time.Time{} // Clear cache
 	return nil
@@ -154,6 +165,8 @@ func (us *UsageService) SetCCUsagePath(path string) error {
 
 // SetThresholds updates the alert thresholds and recalculates status
 func (us *UsageService) SetThresholds(yellowThreshold, redThreshold float64) {
+	us.mutex.Lock()
+	defer us.mutex.Unlock()
 	us.state.UpdateStatus(yellowThreshold, redThreshold)
 }
 
@@ -194,7 +207,10 @@ func (us *UsageService) performUpdate(maxRetries int) (*models.UsageState, error
 				lastErr = errCCUsageUnavailable
 			}
 			us.setUnknownState()
-			return us.state, lastErr
+			us.mutex.RLock()
+			stateCopy := *us.state
+			us.mutex.RUnlock()
+			return &stateCopy, lastErr
 		}
 
 		output, err := us.executeCCUsage()
@@ -211,7 +227,9 @@ func (us *UsageService) performUpdate(maxRetries int) (*models.UsageState, error
 				extra["attempt"] = attempt
 				extra["maxRetries"] = maxRetries
 			}
+			us.mutex.Lock()
 			us.state.IsAvailable = false
+			us.mutex.Unlock()
 			us.logCommandFailure(err, output, extra)
 
 			if attempt < maxRetries {
@@ -222,7 +240,10 @@ func (us *UsageService) performUpdate(maxRetries int) (*models.UsageState, error
 			if lastErr == nil {
 				lastErr = err
 			}
-			return us.state, lastErr
+			us.mutex.RLock()
+			stateCopy := *us.state
+			us.mutex.RUnlock()
+			return &stateCopy, lastErr
 		}
 
 		response, err := parseCCUsageResponse(output)
@@ -233,7 +254,10 @@ func (us *UsageService) performUpdate(maxRetries int) (*models.UsageState, error
 				"output":  truncateOutput(output),
 			})
 			us.setUnknownState()
-			return us.state, lib.WrapError(err, lib.ErrCodeCCUsage, "failed to parse ccusage JSON output")
+			us.mutex.RLock()
+			stateCopy := *us.state
+			us.mutex.RUnlock()
+			return &stateCopy, lib.WrapError(err, lib.ErrCodeCCUsage, "failed to parse ccusage JSON output")
 		}
 
 		today := time.Now().Format("2006-01-02")
@@ -244,7 +268,10 @@ func (us *UsageService) performUpdate(maxRetries int) (*models.UsageState, error
 				"availableDates": availableDates(response.Daily),
 			})
 			us.setNoDataForToday()
-			return us.state, lib.WrapError(errors.New("no data for today"), lib.ErrCodeCCUsage, "ccusage has no data for today")
+			us.mutex.RLock()
+			stateCopy := *us.state
+			us.mutex.RUnlock()
+			return &stateCopy, lib.WrapError(errors.New("no data for today"), lib.ErrCodeCCUsage, "ccusage has no data for today")
 		}
 
 		if ccusageOutput.TotalCost == 0 && ccusageOutput.TotalTokens == 0 {
@@ -254,7 +281,10 @@ func (us *UsageService) performUpdate(maxRetries int) (*models.UsageState, error
 				"date":        ccusageOutput.Date,
 			})
 			us.setUnknownState()
-			return us.state, lib.WrapError(errors.New("ccusage returned zero values"), lib.ErrCodeCCUsage, "ccusage returned invalid zero values")
+			us.mutex.RLock()
+			stateCopy := *us.state
+			us.mutex.RUnlock()
+			return &stateCopy, lib.WrapError(errors.New("ccusage returned zero values"), lib.ErrCodeCCUsage, "ccusage returned invalid zero values")
 		}
 
 		us.applyUsageData(ccusageOutput)
@@ -269,14 +299,20 @@ func (us *UsageService) performUpdate(maxRetries int) (*models.UsageState, error
 		}
 		us.logger.Info("Successfully parsed ccusage data", context)
 
-		return us.state, nil
+		us.mutex.RLock()
+		stateCopy := *us.state
+		us.mutex.RUnlock()
+		return &stateCopy, nil
 	}
 
 	if lastErr == nil {
 		lastErr = errCCUsageUnavailable
 	}
 	us.setUnknownState()
-	return us.state, lastErr
+	us.mutex.RLock()
+	stateCopy := *us.state
+	us.mutex.RUnlock()
+	return &stateCopy, lastErr
 }
 
 func (us *UsageService) executeCCUsage() ([]byte, error) {
@@ -322,6 +358,8 @@ func availableDates(daily []CCUsageOutput) []string {
 }
 
 func (us *UsageService) applyUsageData(output CCUsageOutput) {
+	us.mutex.Lock()
+	defer us.mutex.Unlock()
 	now := time.Now()
 	us.state.DailyCount = output.TotalTokens
 	us.state.DailyCost = output.TotalCost
@@ -363,10 +401,9 @@ func (us *UsageService) StartPolling(intervalSeconds int, callback func(*models.
 
 	us.StopPolling()
 
-	us.updateCallback = callback
-
-	// Create ticker and assign it atomically with mutex protection
+	// Create ticker and assign callback atomically with mutex protection
 	us.mutex.Lock()
+	us.updateCallback = callback
 	us.ticker = time.NewTicker(time.Duration(intervalSeconds) * time.Second)
 	us.mutex.Unlock()
 
@@ -423,8 +460,11 @@ func (us *UsageService) pollingLoop() {
 				})
 			}
 
-			if us.updateCallback != nil {
-				us.updateCallback(state)
+			us.mutex.RLock()
+			callback := us.updateCallback
+			us.mutex.RUnlock()
+			if callback != nil {
+				callback(state)
 			}
 
 		case <-us.pollStopChan:
@@ -462,9 +502,12 @@ func (us *UsageService) dailyResetLoop() {
 					})
 				} else {
 					us.logger.Info("Daily usage reset successfully")
-					if us.updateCallback != nil {
+					us.mutex.RLock()
+					callback := us.updateCallback
+					us.mutex.RUnlock()
+					if callback != nil {
 						state, _ := us.GetDailyUsage()
-						us.updateCallback(state)
+						callback(state)
 					}
 				}
 				lastResetDay = now.Day()
