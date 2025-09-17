@@ -2,16 +2,18 @@
 
 ![Screenshot](docs/screenshot.png)
 
-A system tray application that monitors your daily Claude Code usage and displays real-time cost information in your menu bar.
+A system tray application that monitors your daily Claude Code usage and displays real-time cost information in your menu bar. The project was inspired by [sivchari/ccowl](https://github.com/sivchari/ccowl), but optimised for my usecase: for enterprise plans where spend is tracked per day rather than the five-hour windows Claude Pro/Max.
 
 ## Features
 
 - **Real-time monitoring**: Displays current daily usage cost and API call count
+- **Daily spend focus**: Tailored for enterprise accounts that care about day-level usage, not five-hour Pro/Max windows
 - **Status indicators**: Color-coded status (🟢 Green, 🟡 Yellow, 🔴 Red) based on configurable thresholds
 - **System tray integration**: Runs in the background with menu bar access
-- **Automatic updates**: Configurable polling interval for fresh data
+- **Automatic updates**: Configurable polling interval with resilient polling service
 - **XDG compliance**: Stores configuration in standard XDG directories
 - **Multi-language support**: English and Japanese localization
+- **Smart caching**: Avoids hitting `ccusage` more often than necessary and surfaces health issues clearly
 
 
 The application displays in your system tray as:
@@ -28,6 +30,15 @@ The application displays in your system tray as:
 - Go 1.21 or later
 - `ccusage` binary installed and accessible in PATH
 - macOS, Linux, or Windows
+
+### Ubuntu/Linux Additional Requirements
+
+For Ubuntu/Linux systems, install the required dependencies:
+
+```bash
+sudo apt update
+sudo apt install -y libayatana-appindicator3-dev pkg-config
+```
 
 ### Build from Source
 
@@ -60,6 +71,8 @@ update_interval: 30
 yellow_threshold: 10.00
 red_threshold: 20.00
 debug_level: "INFO"
+cache_window: 10
+cmd_timeout: 5
 ```
 
 ### Configuration Options
@@ -69,6 +82,8 @@ debug_level: "INFO"
 - `yellow_threshold`: Cost threshold for yellow warning (default: $10.00)
 - `red_threshold`: Cost threshold for red alert (default: $20.00)
 - `debug_level`: Logging level - DEBUG, INFO, WARN, ERROR, or FATAL (default: "INFO")
+- `cache_window`: Number of seconds to reuse a cached ccusage response when it reports healthy data (default: 10)
+- `cmd_timeout`: Number of seconds before a ccusage command run is aborted (default: 5)
 
 ## Usage
 
@@ -114,23 +129,14 @@ Right-click the tray icon to access:
 ```
 src/
 ├── main.go                 # Application entry point with systray integration
-├── models/                 # Data models and business logic
-│   ├── alert_status.go     # Status enumeration (Green/Yellow/Red/Unknown)
-│   ├── config.go          # Configuration model with validation
-│   ├── template_data.go   # Template data structures for display
-│   └── usage_state.go     # Usage state model with status calculation
-├── services/              # Business logic layer
-│   ├── config_service.go  # XDG-compliant configuration management
-│   └── usage_service.go   # ccusage integration and polling service
-└── lib/                   # Utilities and shared functionality
-    ├── errors.go          # Custom error types with categorization
-    ├── logger.go          # Structured logging with configurable levels
-    └── template_engine.go # Template processing for display formats
+├── models/                 # Config, alert status, template data, usage state
+├── services/               # Configuration + ccusage polling services
+└── lib/                    # Logging, error helpers, template engine
 
-tests/                     # Comprehensive test suite
-├── contract/              # Service interface contract tests
-├── integration/           # End-to-end workflow tests  
-└── unit/                  # Additional unit test coverage
+docs/
+└── screenshot.png          # UI reference used in this README
+
+tests live alongside the code as `*_test.go` files under each package.
 ```
 
 ### Available Make Targets
@@ -187,11 +193,12 @@ make test-race
 make bench
 ```
 
-#### Test Structure
-- **Unit tests**: `src/*/test.go` - Individual component tests
-- **Contract tests**: `tests/contract/` - Service interface contracts  
-- **Integration tests**: `tests/integration/` - End-to-end workflows
-- **Additional unit tests**: `tests/unit/` - Extra unit test coverage
+`make coverage` and `make coverage-html` both emit `coverage.html` so you can open a local report after the tests finish.
+
+#### Test Layout
+- Tests live next to their implementation under `src/**/**/*_test.go`
+- Table-driven coverage exercises the config, service, and model layers
+- Use `make coverage-func` to spot gaps before sending a PR
 
 ### Code Quality
 
@@ -268,7 +275,8 @@ The application shows different indicators based on data availability:
 ccusage daily --json
 
 # Test what happens when ccusage fails (should show Unknown)
-CC_USAGE_PATH=/invalid/path ./cc-dailyuse-bar
+# Temporarily set an invalid `ccusage_path` in your config file, then rerun:
+./cc-dailyuse-bar
 ```
 
 ### Configuration Issues
@@ -301,26 +309,3 @@ Available log levels:
 5. Run the test suite: `make test`
 6. Run the linter: `make lint`
 7. Submit a pull request
-
-## License
-
-[Add your license information here]
-
-## Changelog
-
-### Latest
-- **feat: distinguish between no data today vs data unavailable**
-  - Add Unknown status to AlertStatus enum for ccusage unavailable scenarios
-  - Remove misleading simulation fallback logic completely
-  - Show `CC 🟢 $0.00` when ccusage works but has no data for today
-  - Show `CC ⚪️ Unknown` when ccusage binary is unavailable or fails
-  - Add comprehensive tests for both scenarios
-  - Fix config validation with missing required fields
-
-### v1.0.0
-- Initial release
-- System tray integration
-- Real-time usage monitoring
-- Configurable thresholds
-- XDG-compliant configuration
-- Multi-language support
