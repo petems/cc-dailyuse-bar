@@ -442,15 +442,8 @@ func (us *UsageService) StopPolling() {
 		us.ticker = nil
 	}
 
-	var pollStopChan, resetStopChan chan struct{}
-	if us.pollStopChan != nil {
-		pollStopChan = us.pollStopChan
-		us.pollStopChan = make(chan struct{})
-	}
-	if us.resetStopChan != nil {
-		resetStopChan = us.resetStopChan
-		us.resetStopChan = make(chan struct{})
-	}
+	pollStopChan := us.replaceStopChan(&us.pollStopChan)
+	resetStopChan := us.replaceStopChan(&us.resetStopChan)
 	us.mutex.Unlock()
 
 	if pollStopChan != nil {
@@ -461,6 +454,14 @@ func (us *UsageService) StopPolling() {
 	}
 
 	us.logger.Info("Usage polling stopped")
+}
+
+func (us *UsageService) replaceStopChan(chPtr *chan struct{}) chan struct{} {
+	oldChan := *chPtr
+	if oldChan != nil {
+		*chPtr = make(chan struct{})
+	}
+	return oldChan
 }
 
 // pollingLoop runs the polling loop in a goroutine
