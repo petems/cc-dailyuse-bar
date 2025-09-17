@@ -1,6 +1,7 @@
 package contract
 
 import (
+	"os/exec"
 	"testing"
 	"time"
 
@@ -11,7 +12,15 @@ import (
 	"cc-dailyuse-bar/src/services"
 )
 
+func requireCCUsageBinary(t *testing.T) {
+	t.Helper()
+	if _, err := exec.LookPath("ccusage"); err != nil {
+		t.Skipf("ccusage binary not available: %v", err)
+	}
+}
+
 func TestUsageService_GetDailyUsage(t *testing.T) {
+	requireCCUsageBinary(t)
 	// Arrange
 	config := models.ConfigDefaults()
 	usageService := services.NewUsageService(config)
@@ -30,6 +39,7 @@ func TestUsageService_GetDailyUsage(t *testing.T) {
 }
 
 func TestUsageService_UpdateUsage(t *testing.T) {
+	requireCCUsageBinary(t)
 	// Arrange
 	config := models.ConfigDefaults()
 	usageService := services.NewUsageService(config)
@@ -50,6 +60,7 @@ func TestUsageService_UpdateUsage(t *testing.T) {
 }
 
 func TestUsageService_ResetDaily(t *testing.T) {
+	requireCCUsageBinary(t)
 	// Arrange
 	config := models.ConfigDefaults()
 	usageService := services.NewUsageService(config)
