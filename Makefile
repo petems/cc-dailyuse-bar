@@ -17,7 +17,8 @@ LDFLAGS=-ldflags "-s -w"
 LDFLAGS_GUI=-ldflags "-s -w -H windowsgui"
 BUILD_FLAGS=-v
 
-.PHONY: all build clean test coverage coverage-html coverage-func deps lint fmt vet help run install
+.PHONY: all build clean test coverage coverage-html coverage-func deps lint fmt vet help run install \
+	install-service-macos uninstall-service-macos bundle-macos
 
 # Default target
 all: clean deps lint test build
@@ -127,6 +128,46 @@ uninstall-service:
 	sudo systemctl daemon-reload
 	@echo "Service uninstalled"
 
+# macOS LaunchAgent variables
+LAUNCHAGENT_LABEL=com.cc-dailyuse-bar
+LAUNCHAGENT_PLIST=$(HOME)/Library/LaunchAgents/$(LAUNCHAGENT_LABEL).plist
+LAUNCHAGENT_LOG_DIR=$(HOME)/Library/Logs/cc-dailyuse-bar
+
+# Install macOS LaunchAgent (run at login)
+install-service-macos: build
+	@echo "Installing cc-dailyuse-bar as macOS LaunchAgent..."
+	mkdir -p $(HOME)/Library/LaunchAgents
+	mkdir -p $(LAUNCHAGENT_LOG_DIR)
+	cp $(BINARY_NAME) /usr/local/bin/
+	sed 's|~/Library/Logs|$(HOME)/Library/Logs|g' com.cc-dailyuse-bar.plist > $(LAUNCHAGENT_PLIST)
+	launchctl load $(LAUNCHAGENT_PLIST)
+	@echo "LaunchAgent installed and loaded."
+	@echo "Logs: $(LAUNCHAGENT_LOG_DIR)/"
+	@echo "To stop: make uninstall-service-macos"
+
+# Uninstall macOS LaunchAgent
+uninstall-service-macos:
+	-launchctl unload $(LAUNCHAGENT_PLIST)
+	rm -f $(LAUNCHAGENT_PLIST)
+	rm -f /usr/local/bin/$(BINARY_NAME)
+	@echo "LaunchAgent uninstalled."
+	@echo "Logs preserved at: $(LAUNCHAGENT_LOG_DIR)/"
+
+# macOS .app bundle variables
+APP_NAME=CC Daily Use Bar
+APP_BUNDLE=$(APP_NAME).app
+
+# Build macOS .app bundle
+bundle-macos: build
+	@echo "Creating macOS .app bundle..."
+	rm -rf "$(APP_BUNDLE)"
+	mkdir -p "$(APP_BUNDLE)/Contents/MacOS"
+	mkdir -p "$(APP_BUNDLE)/Contents/Resources"
+	cp $(BINARY_NAME) "$(APP_BUNDLE)/Contents/MacOS/"
+	cp packaging/macos/Info.plist "$(APP_BUNDLE)/Contents/"
+	@echo "Bundle created: $(APP_BUNDLE)"
+	@echo "To sign: codesign --deep --force --options=runtime --entitlements=packaging/macos/entitlements.plist --sign 'Developer ID Application: YOUR_NAME' '$(APP_BUNDLE)'"
+
 # Run formatters
 format:
 	$(GOCMD) fmt ./...
@@ -185,8 +226,11 @@ help:
 	@echo "  run          - Run the application"
 	@echo "  daemon       - Run as daemon (background process)"
 	@echo "  install      - Install the binary"
-	@echo "  install-service - Install as systemd service"
-	@echo "  uninstall-service - Remove systemd service"
+	@echo "  install-service - Install as systemd service (Linux)"
+	@echo "  uninstall-service - Remove systemd service (Linux)"
+	@echo "  install-service-macos - Install as macOS LaunchAgent"
+	@echo "  uninstall-service-macos - Remove macOS LaunchAgent"
+	@echo "  bundle-macos   - Build macOS .app bundle"
 	@echo "  format       - Format code (fmt + lint-fix)"
 	@echo "  security     - Check for security vulnerabilities"
 	@echo "  mocks        - Generate mocks"
