@@ -163,6 +163,8 @@ APP_BUNDLE=$(APP_NAME).app
 
 # Build macOS .app bundle
 bundle-macos: build
+	@echo "Verifying binary is a macOS Mach-O executable..."
+	@file $(BINARY_NAME) | grep -q Mach-O || { echo "Error: $(BINARY_NAME) is not a macOS binary. Run on macOS or cross-compile for darwin."; exit 1; }
 	@echo "Creating macOS .app bundle..."
 	rm -rf "$(APP_BUNDLE)"
 	mkdir -p "$(APP_BUNDLE)/Contents/MacOS"
