@@ -1,0 +1,69 @@
+version: 2
+
+project_name: cc-dailyuse-bar
+
+builds:
+  - id: cc-dailyuse-bar-darwin
+    main: ./src
+    binary: cc-dailyuse-bar
+    env:
+      - CGO_ENABLED=1
+    goos:
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+  - id: cc-dailyuse-bar-linux
+    main: ./src
+    binary: cc-dailyuse-bar
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+
+archives:
+  - id: default
+    format: tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+
+# macOS code signing (requires Developer ID certificate)
+# Uncomment when certificate is available:
+#
+# signs:
+#   - id: darwin
+#     cmd: codesign
+#     args:
+#       - "--deep"
+#       - "--force"
+#       - "--options=runtime"
+#       - "--entitlements=packaging/macos/entitlements.plist"
+#       - "--sign"
+#       - "Developer ID Application: YOUR_NAME (TEAM_ID)"
+#       - "{{ .Path }}"
+#     artifacts: binary
+
+# macOS notarization (requires Apple Developer credentials)
+# Uncomment when ready:
+#
+# notarize:
+#   - macos:
+#       - enabled: true
+#         ids:
+#           - cc-dailyuse-bar
+#         notarytool:
+#           keychain_profile: CC_DAILYUSE_BAR
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
