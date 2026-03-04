@@ -132,14 +132,18 @@ uninstall-service:
 LAUNCHAGENT_LABEL=com.cc-dailyuse-bar
 LAUNCHAGENT_PLIST=$(HOME)/Library/LaunchAgents/$(LAUNCHAGENT_LABEL).plist
 LAUNCHAGENT_LOG_DIR=$(HOME)/Library/Logs/cc-dailyuse-bar
+MACOS_BIN_DIR?=$(HOME)/.local/bin
 
 # Install macOS LaunchAgent (run at login)
 install-service-macos: build
 	@echo "Installing cc-dailyuse-bar as macOS LaunchAgent..."
 	mkdir -p $(HOME)/Library/LaunchAgents
 	mkdir -p $(LAUNCHAGENT_LOG_DIR)
-	cp $(BINARY_NAME) /usr/local/bin/
-	sed 's|~/Library/Logs|$(HOME)/Library/Logs|g' com.cc-dailyuse-bar.plist > $(LAUNCHAGENT_PLIST)
+	mkdir -p "$(MACOS_BIN_DIR)"
+	cp "$(BINARY_NAME)" "$(MACOS_BIN_DIR)/$(BINARY_NAME)"
+	sed -e 's|__HOME__|$(HOME)|g' \
+	    -e 's|__CC_DAILYUSE_BAR_BIN__|$(MACOS_BIN_DIR)/$(BINARY_NAME)|g' \
+	    com.cc-dailyuse-bar.plist > "$(LAUNCHAGENT_PLIST)"
 	launchctl load $(LAUNCHAGENT_PLIST)
 	@echo "LaunchAgent installed and loaded."
 	@echo "Logs: $(LAUNCHAGENT_LOG_DIR)/"
@@ -149,7 +153,7 @@ install-service-macos: build
 uninstall-service-macos:
 	-launchctl unload $(LAUNCHAGENT_PLIST)
 	rm -f $(LAUNCHAGENT_PLIST)
-	rm -f /usr/local/bin/$(BINARY_NAME)
+	rm -f "$(MACOS_BIN_DIR)/$(BINARY_NAME)"
 	@echo "LaunchAgent uninstalled."
 	@echo "Logs preserved at: $(LAUNCHAGENT_LOG_DIR)/"
 

@@ -3,24 +3,30 @@ version: 2
 project_name: cc-dailyuse-bar
 
 builds:
-  - id: cc-dailyuse-bar
+  - id: cc-dailyuse-bar-darwin
     main: ./src
     binary: cc-dailyuse-bar
     env:
       - CGO_ENABLED=1
     goos:
       - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+  - id: cc-dailyuse-bar-linux
+    main: ./src
+    binary: cc-dailyuse-bar
+    env:
+      - CGO_ENABLED=0
+    goos:
       - linux
     goarch:
       - amd64
       - arm64
     ldflags:
       - -s -w
-    ignore:
-      # Cross-compiling CGo between OS/arch requires specific toolchains.
-      # Build native-only for now; CI matrix handles cross-platform.
-      - goos: linux
-        goarch: arm64
 
 archives:
   - id: default

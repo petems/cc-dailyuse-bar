@@ -7,7 +7,7 @@
 
     <key>ProgramArguments</key>
     <array>
-        <string>/usr/local/bin/cc-dailyuse-bar</string>
+        <string>__CC_DAILYUSE_BAR_BIN__</string>
     </array>
 
     <key>RunAtLoad</key>
@@ -23,9 +23,9 @@
     <string>Interactive</string>
 
     <key>StandardOutPath</key>
-    <string>~/Library/Logs/cc-dailyuse-bar/stdout.log</string>
+    <string>__HOME__/Library/Logs/cc-dailyuse-bar/stdout.log</string>
 
     <key>StandardErrorPath</key>
-    <string>~/Library/Logs/cc-dailyuse-bar/stderr.log</string>
+    <string>__HOME__/Library/Logs/cc-dailyuse-bar/stderr.log</string>
 </dict>
 </plist>
