@@ -3,7 +3,7 @@ version: 2
 project_name: cc-dailyuse-bar
 
 builds:
-  - id: darwin-amd64
+  - id: darwin
     main: ./src
     binary: cc-dailyuse-bar
     env:
@@ -14,32 +14,19 @@ builds:
       - darwin
     goarch:
       - amd64
-    ldflags:
-      - -s -w
-
-  - id: darwin-arm64
-    main: ./src
-    binary: cc-dailyuse-bar
-    env:
-      - CGO_ENABLED=1
-      - CGO_CFLAGS=-mmacosx-version-min=12.0
-      - CGO_LDFLAGS=-mmacosx-version-min=12.0
-    goos:
-      - darwin
-    goarch:
       - arm64
     ldflags:
       - -s -w
 
-# Linux build intentionally omitted: getlantern/systray requires CGO+GTK on Linux,
-# which needs a Linux runner with libgtk-3-dev installed. Add back when a Linux
-# release pipeline is desired.
+# Linux build intentionally omitted: getlantern/systray on Linux needs CGO and
+# the systray deps the rest of the repo documents (libayatana-appindicator3-dev
+# and pkg-config — see README.md and .github/workflows/golang.yml). Add back
+# when a Linux release pipeline is desired.
 
 universal_binaries:
   - id: darwin-universal
     ids:
-      - darwin-amd64
-      - darwin-arm64
+      - darwin
     name_template: cc-dailyuse-bar
     replace: false
 
@@ -56,8 +43,11 @@ archives:
 # and pushes a hand-templated cask file to petems/homebrew-tap.
 
 release:
+  # Narrow glob so only the current run's universal DMG attaches; avoids picking
+  # up stale artifacts if dist/ was not cleaned. The release workflow also runs
+  # `goreleaser release --clean` which wipes dist/ anyway, but defense in depth.
   extra_files:
-    - glob: ./dist/*.dmg
+    - glob: ./dist/cc-dailyuse-bar_*_universal.dmg
 
 changelog:
   sort: asc
