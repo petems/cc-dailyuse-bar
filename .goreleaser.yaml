@@ -3,11 +3,13 @@ version: 2
 project_name: cc-dailyuse-bar
 
 builds:
-  - id: cc-dailyuse-bar-darwin
+  - id: darwin
     main: ./src
     binary: cc-dailyuse-bar
     env:
       - CGO_ENABLED=1
+      - CGO_CFLAGS=-mmacosx-version-min=12.0
+      - CGO_LDFLAGS=-mmacosx-version-min=12.0
     goos:
       - darwin
     goarch:
@@ -15,50 +17,37 @@ builds:
       - arm64
     ldflags:
       - -s -w
-  - id: cc-dailyuse-bar-linux
-    main: ./src
-    binary: cc-dailyuse-bar
-    env:
-      - CGO_ENABLED=0
-    goos:
-      - linux
-    goarch:
-      - amd64
-      - arm64
-    ldflags:
-      - -s -w
+
+# Linux build intentionally omitted: getlantern/systray on Linux needs CGO and
+# the systray deps the rest of the repo documents (libayatana-appindicator3-dev
+# and pkg-config — see README.md and .github/workflows/golang.yml). Add back
+# when a Linux release pipeline is desired.
+
+universal_binaries:
+  - id: darwin-universal
+    ids:
+      - darwin
+    name_template: cc-dailyuse-bar
+    replace: false
 
 archives:
   - id: default
-    format: tar.gz
+    formats:
+      - tar.gz
     name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
 
-# macOS code signing (requires Developer ID certificate)
-# Uncomment when certificate is available:
-#
-# signs:
-#   - id: darwin
-#     cmd: codesign
-#     args:
-#       - "--deep"
-#       - "--force"
-#       - "--options=runtime"
-#       - "--entitlements=packaging/macos/entitlements.plist"
-#       - "--sign"
-#       - "Developer ID Application: YOUR_NAME (TEAM_ID)"
-#       - "{{ .Path }}"
-#     artifacts: binary
+# Homebrew cask publishing is handled by a separate workflow step.
+# OSS GoReleaser's `homebrew_casks` block generates a `binary` stanza, not the
+# `app "CC Daily Use Bar.app"` stanza we need for a DMG-delivered .app bundle
+# (the `app:` field is Pro-only). The release workflow computes the DMG sha256
+# and pushes a hand-templated cask file to petems/homebrew-tap.
 
-# macOS notarization (requires Apple Developer credentials)
-# Uncomment when ready:
-#
-# notarize:
-#   - macos:
-#       - enabled: true
-#         ids:
-#           - cc-dailyuse-bar
-#         notarytool:
-#           keychain_profile: CC_DAILYUSE_BAR
+release:
+  # Narrow glob so only the current run's universal DMG attaches; avoids picking
+  # up stale artifacts if dist/ was not cleaned. The release workflow also runs
+  # `goreleaser release --clean` which wipes dist/ anyway, but defense in depth.
+  extra_files:
+    - glob: ./dist/cc-dailyuse-bar_*_universal.dmg
 
 changelog:
   sort: asc
