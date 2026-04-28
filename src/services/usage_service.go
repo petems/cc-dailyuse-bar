@@ -98,13 +98,6 @@ func (us *UsageService) UpdateUsage() (*models.UsageState, error) {
 	return us.performUpdateLocked(1)
 }
 
-// getStateCopy returns a thread-safe copy of the current state
-func (us *UsageService) getStateCopy() *models.UsageState {
-	us.mutex.RLock()
-	defer us.mutex.RUnlock()
-	return us.getStateCopyLocked()
-}
-
 func (us *UsageService) getStateCopyLocked() *models.UsageState {
 	stateCopy := *us.state
 	return &stateCopy
@@ -373,12 +366,6 @@ func availableDates(daily []CCUsageOutput) []string {
 	return dates
 }
 
-func (us *UsageService) applyUsageData(output CCUsageOutput) {
-	us.mutex.Lock()
-	defer us.mutex.Unlock()
-	us.applyUsageDataLocked(output)
-}
-
 func (us *UsageService) applyUsageDataLocked(output CCUsageOutput) {
 	us.setStateMetricsLocked(output.TotalTokens, output.TotalCost, true)
 	us.updateStatusLocked()
@@ -413,7 +400,8 @@ func (us *UsageService) sleepForRetry(attempt int) {
 	time.Sleep(time.Duration(attempt) * time.Second)
 }
 
-// T030: Polling timer with configurable interval
+// StartPolling starts a configurable-interval polling timer that invokes
+// callback with the latest state on each tick (T030).
 func (us *UsageService) StartPolling(intervalSeconds int, callback func(*models.UsageState)) error {
 	if intervalSeconds <= 0 {
 		return lib.ValidationError("polling interval must be positive")
@@ -494,7 +482,8 @@ func (us *UsageService) pollingLoop() {
 	}
 }
 
-// T031: Daily reset scheduler with midnight detection
+// StartDailyResetMonitor starts the daily reset scheduler with midnight
+// detection (T031).
 func (us *UsageService) StartDailyResetMonitor() {
 	go us.dailyResetLoop()
 	us.logger.Info("Daily reset monitor started")
