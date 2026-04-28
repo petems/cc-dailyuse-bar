@@ -12,7 +12,7 @@ The application follows a clean architecture pattern with clear separation of co
 
 ### Core Components
 
-- **main.go**: Application entry point with system tray integration using `getlantern/systray`
+- **main.go**: Application entry point with system tray integration using `fyne.io/systray`
 - **models/**: Data models and business logic
   - `Config`: Configuration management with validation
   - `UsageState`: Current usage state with status calculation

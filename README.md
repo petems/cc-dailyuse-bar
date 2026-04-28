@@ -227,7 +227,7 @@ make check
 
 ## Dependencies
 
-- [github.com/getlantern/systray](https://github.com/getlantern/systray) - Cross-platform system tray support
+- [fyne.io/systray](https://github.com/fyne-io/systray) - Cross-platform system tray support
 - [github.com/adrg/xdg](https://github.com/adrg/xdg) - XDG Base Directory support  
 - [gopkg.in/yaml.v3](https://gopkg.in/yaml.v3) - YAML configuration parsing
 - [github.com/stretchr/testify](https://github.com/stretchr/testify) - Testing toolkit

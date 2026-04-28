@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/getlantern/systray"
+	"fyne.io/systray"
 
 	"cc-dailyuse-bar/src/lib"
 	"cc-dailyuse-bar/src/models"
