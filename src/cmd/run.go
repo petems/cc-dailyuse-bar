@@ -52,7 +52,7 @@ This is the default mode if no command is specified.`,
 		}
 
 		if daemonMode {
-			return runAsDaemon()
+			return runAsDaemon(cmd)
 		}
 
 		return runTrayApp(cmd, config)
@@ -131,7 +131,7 @@ func buildDaemonArgs(osArgs []string) []string {
 	return args
 }
 
-func runAsDaemon() error {
+func runAsDaemon(cmd *cobra.Command) error {
 	execPath, err := os.Executable()
 	if err != nil {
 		return lib.WrapError(err, lib.ErrCodeSystem, "failed to get executable path")
@@ -139,7 +139,7 @@ func runAsDaemon() error {
 
 	args := buildDaemonArgs(os.Args)
 
-	cmd := exec.Command(execPath, args...)
+	child := exec.Command(execPath, args...)
 	// Detach the child from the parent's terminal — leaving Stdout/Stderr wired
 	// up means closing the terminal sends SIGHUP to the daemon. Discarding to
 	// /dev/null lets the parent exit cleanly without dragging the child down.
@@ -147,11 +147,11 @@ func runAsDaemon() error {
 	if err != nil {
 		return lib.WrapError(err, lib.ErrCodeSystem, "failed to open /dev/null")
 	}
-	cmd.Stdin = devNull
-	cmd.Stdout = devNull
-	cmd.Stderr = devNull
+	child.Stdin = devNull
+	child.Stdout = devNull
+	child.Stderr = devNull
 
-	startErr := cmd.Start()
+	startErr := child.Start()
 	// The child has dup'd its own fds; the parent's devNull is no longer needed.
 	if cerr := devNull.Close(); cerr != nil && startErr == nil {
 		startErr = cerr
@@ -160,9 +160,11 @@ func runAsDaemon() error {
 		return lib.WrapError(startErr, lib.ErrCodeSystem, "failed to start daemon")
 	}
 
-	fmt.Printf("CC Daily Use Bar started as daemon (PID: %d)\n", cmd.Process.Pid)
-	fmt.Printf("To stop: kill %d\n", cmd.Process.Pid)
+	// Write through the cobra command so callers using cmd.SetOut() (tests) can
+	// capture this output, and so deferred cleanup in the caller still runs.
+	out := cmd.OutOrStdout()
+	fmt.Fprintf(out, "CC Daily Use Bar started as daemon (PID: %d)\n", child.Process.Pid)
+	fmt.Fprintf(out, "To stop: kill %d\n", child.Process.Pid)
 
-	os.Exit(0)
-	return nil // unreachable, but satisfies compiler
+	return nil
 }
