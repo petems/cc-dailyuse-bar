@@ -38,10 +38,14 @@ func TestMergeConfig_OverridesApplied(t *testing.T) {
 	cmd.Flags().Int("cache-window", 0, "")
 	cmd.Flags().Int("cmd-timeout", 0, "")
 
-	// Simulate flags being set via command line
+	// Exercise every override branch — bare-string fields and integer fields
+	// would otherwise regress silently.
 	require.NoError(t, cmd.Flags().Set("update-interval", "60"))
 	require.NoError(t, cmd.Flags().Set("yellow-threshold", "15.0"))
 	require.NoError(t, cmd.Flags().Set("red-threshold", "25.0"))
+	require.NoError(t, cmd.Flags().Set("ccusage-path", "/opt/ccusage"))
+	require.NoError(t, cmd.Flags().Set("cache-window", "20"))
+	require.NoError(t, cmd.Flags().Set("cmd-timeout", "8"))
 
 	err := mergeConfig(config, cmd)
 	require.NoError(t, err)
@@ -49,6 +53,9 @@ func TestMergeConfig_OverridesApplied(t *testing.T) {
 	assert.Equal(t, 60, config.UpdateInterval)
 	assert.Equal(t, 15.0, config.YellowThreshold)
 	assert.Equal(t, 25.0, config.RedThreshold)
+	assert.Equal(t, "/opt/ccusage", config.CCUsagePath)
+	assert.Equal(t, 20, config.CacheWindow)
+	assert.Equal(t, 8, config.CmdTimeout)
 }
 
 func TestMergeConfig_ValidationFailure(t *testing.T) {
