@@ -44,12 +44,11 @@ This is the default mode if no command is specified.`,
 			configService.SetConfigPath(cfgFile)
 		}
 
+		// Load() already returns ConfigDefaults for a missing file; any error
+		// here is a real failure (parse, permissions, validation). Don't mask it.
 		config, err := configService.Load()
 		if err != nil {
-			logger.Warn("Failed to load configuration, using defaults", map[string]interface{}{
-				"error": err.Error(),
-			})
-			config = models.ConfigDefaults()
+			return fmt.Errorf("failed to load configuration: %w", err)
 		}
 
 		// Merge flags into config

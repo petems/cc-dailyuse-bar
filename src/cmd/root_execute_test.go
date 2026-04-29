@@ -29,8 +29,7 @@ func TestRootExecute_NoArgsDoesNotStackOverflow(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	// G702: re-execing the test binary itself is the standard Go subprocess test pattern.
-	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestRootExecute_NoArgsDoesNotStackOverflow$") //nolint:gosec
+	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestRootExecute_NoArgsDoesNotStackOverflow$") //nolint:gosec // G702: re-execing the test binary itself is the standard Go subprocess pattern
 	cmd.Env = append(os.Environ(), rootNoArgsHelperEnv+"=1")
 
 	out, err := cmd.CombinedOutput()

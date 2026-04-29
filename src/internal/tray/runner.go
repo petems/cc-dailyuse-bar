@@ -112,13 +112,14 @@ func (tr *Runner) updateUIFromState(state *models.UsageState) {
 		return
 	}
 
-	if !state.IsAvailable || state.Status == models.Unknown {
+	if !state.IsAvailable {
 		systray.SetTitle("CC ⚪️ Unknown")
 		tr.updateMenuItems([]string{"⚠️ Usage data unavailable"})
 		return
 	}
 
-	// Compute status based on configured thresholds
+	// Recompute status from thresholds before reading it — otherwise a stale
+	// Unknown carried over from a prior tick would short-circuit the display.
 	state.UpdateStatus(tr.config.YellowThreshold, tr.config.RedThreshold)
 	emoji := tr.emojiForStatus(state.Status)
 

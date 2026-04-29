@@ -2,7 +2,6 @@ package services
 
 import (
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 
@@ -70,7 +69,7 @@ func (cs *ConfigService) Save(config *models.Config) error {
 
 	data, err := yaml.Marshal(config)
 	if err != nil {
-		return fmt.Errorf("failed to marshal config: %w", err)
+		return lib.WrapError(err, lib.ErrCodeConfig, "failed to marshal config")
 	}
 
 	configPath := cs.GetConfigPath()
@@ -81,7 +80,7 @@ func (cs *ConfigService) Save(config *models.Config) error {
 	}
 
 	if err := cs.writeFile(configPath, data, 0644); err != nil {
-		return fmt.Errorf("failed to write config file: %w", err)
+		return lib.WrapError(err, lib.ErrCodeConfig, "failed to write config file")
 	}
 
 	return nil
@@ -91,7 +90,7 @@ func (cs *ConfigService) Save(config *models.Config) error {
 func (cs *ConfigService) EnsureConfigDir() error {
 	dir := filepath.Dir(cs.GetConfigPath())
 	if err := cs.mkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("failed to create config directory: %w", err)
+		return lib.WrapError(err, lib.ErrCodeConfig, "failed to create config directory")
 	}
 	return nil
 }

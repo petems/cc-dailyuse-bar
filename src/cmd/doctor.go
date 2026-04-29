@@ -35,7 +35,7 @@ var doctorCmd = &cobra.Command{
 		// 2. Binary Check
 		path, err := exec.LookPath(config.CCUsagePath)
 		if err != nil {
-			return fmt.Errorf("binary: 'ccusage' not found at '%s'\n   Please install ccusage or update 'ccusage_path' in config", config.CCUsagePath)
+			return fmt.Errorf("binary: 'ccusage' not found at %q; install ccusage or update 'ccusage_path' in config", config.CCUsagePath)
 		}
 
 		// On non-Windows, verify the file is executable via permission bits.
