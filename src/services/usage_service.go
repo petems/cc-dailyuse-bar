@@ -61,9 +61,12 @@ type CCUsageResponse struct {
 	} `json:"totals"`
 }
 
-// GetDailyUsage queries ccusage and returns current daily statistics
-// Returns cached data if last query was within cache window
-// Returns error if ccusage is unavailable or returns invalid data
+// GetDailyUsage queries ccusage and returns current daily statistics. Returns
+// cached data if the last query was within the cache window — including
+// cached *failure* states, so a sustained ccusage outage doesn't trigger one
+// invocation per call (the throttle this PR exists to provide). Cached
+// failures are returned with the original error so callers can distinguish
+// "throttled-from-failure" from "fresh success".
 func (us *UsageService) GetDailyUsage() (*models.UsageState, error) {
 	us.mutex.RLock()
 	if time.Since(us.lastQuery) < us.cacheWindow {
@@ -71,6 +74,9 @@ func (us *UsageService) GetDailyUsage() (*models.UsageState, error) {
 		// check-then-act races with concurrent writers.
 		stateCopy := *us.state
 		us.mutex.RUnlock()
+		if !stateCopy.IsAvailable {
+			return &stateCopy, lib.WrapError(errCCUsageUnavailable, lib.ErrCodeCCUsage, "serving cached ccusage failure state")
+		}
 		return &stateCopy, nil
 	}
 	us.mutex.RUnlock()
@@ -79,7 +85,11 @@ func (us *UsageService) GetDailyUsage() (*models.UsageState, error) {
 	defer us.mutex.Unlock()
 
 	if time.Since(us.lastQuery) < us.cacheWindow {
-		return us.getStateCopyLocked(), nil
+		state := us.getStateCopyLocked()
+		if !state.IsAvailable {
+			return state, lib.WrapError(errCCUsageUnavailable, lib.ErrCodeCCUsage, "serving cached ccusage failure state")
+		}
+		return state, nil
 	}
 
 	return us.performUpdateLocked(1)

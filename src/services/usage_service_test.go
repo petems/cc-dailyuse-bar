@@ -200,6 +200,35 @@ func TestUsageService_GetDailyUsage_CacheExpired(t *testing.T) {
 	}
 }
 
+// TestUsageService_GetDailyUsage_FailureStateThrottled is the regression test
+// for the throttle this PR introduced. When the cached state is a failure
+// (IsAvailable=false) and lastQuery is fresh, GetDailyUsage must serve the
+// cached failure (with an error) instead of re-running ccusage. Otherwise
+// every caller hits ccusage during an outage, defeating the throttle.
+func TestUsageService_GetDailyUsage_FailureStateThrottled(t *testing.T) {
+	service := newTestUsageService()
+
+	// Point ccusage at a path that would make every fresh call fail loudly,
+	// so if the cache is bypassed we'd see lastQuery move forward.
+	service.ccusagePath = "/non/existent/cc-shim"
+
+	// Seed a fresh cached failure state.
+	pinned := time.Now()
+	service.state.IsAvailable = false
+	service.state.Status = models.Unknown
+	service.state.DailyCount = 0
+	service.state.DailyCost = 0
+	service.lastQuery = pinned
+
+	state, err := service.GetDailyUsage()
+
+	require.Error(t, err, "cached failure should surface an error to callers")
+	assert.False(t, state.IsAvailable)
+	assert.Equal(t, models.Unknown, state.Status)
+	assert.Equal(t, pinned.UnixNano(), service.lastQuery.UnixNano(),
+		"lastQuery must not be touched: a fresh ccusage call would have updated it")
+}
+
 func TestUsageService_StartPolling_InvalidInterval(t *testing.T) {
 	service := newTestUsageService()
 
