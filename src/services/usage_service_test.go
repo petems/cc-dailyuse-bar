@@ -56,10 +56,11 @@ func TestUsageService_IsAvailable(t *testing.T) {
 	assert.False(t, service.IsAvailable())
 }
 
-// TestUsageService_IsAvailable_ResolvedViaPath covers the new code path
-// introduced by the IsAvailable fix: when os.Stat on the configured value
-// fails, fall back to exec.LookPath and re-stat the resolved binary so a
-// bare command name (e.g. "ccusage") in $PATH is recognised as available.
+// TestUsageService_IsAvailable_ResolvedViaPath covers the IsAvailable code
+// path where exec.LookPath resolves a bare command name from $PATH and
+// os.Stat then verifies the resolved binary. This mirrors the resolution
+// exec.CommandContext uses, so a bare name (e.g. "ccusage") in $PATH must
+// be reported available.
 func TestUsageService_IsAvailable_ResolvedViaPath(t *testing.T) {
 	service := newTestUsageService()
 
