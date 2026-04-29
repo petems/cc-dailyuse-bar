@@ -66,7 +66,7 @@ type CCUsageResponse struct {
 // Returns error if ccusage is unavailable or returns invalid data
 func (us *UsageService) GetDailyUsage() (*models.UsageState, error) {
 	us.mutex.RLock()
-	if time.Since(us.lastQuery) < us.cacheWindow && us.state.IsAvailable {
+	if time.Since(us.lastQuery) < us.cacheWindow {
 		// Copy the cached state while still holding the read lock to avoid
 		// check-then-act races with concurrent writers.
 		stateCopy := *us.state
@@ -78,7 +78,7 @@ func (us *UsageService) GetDailyUsage() (*models.UsageState, error) {
 	us.mutex.Lock()
 	defer us.mutex.Unlock()
 
-	if time.Since(us.lastQuery) < us.cacheWindow && us.state.IsAvailable {
+	if time.Since(us.lastQuery) < us.cacheWindow {
 		return us.getStateCopyLocked(), nil
 	}
 
