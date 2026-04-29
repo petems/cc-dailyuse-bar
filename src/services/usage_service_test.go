@@ -56,6 +56,54 @@ func TestUsageService_IsAvailable(t *testing.T) {
 	assert.False(t, service.IsAvailable())
 }
 
+// TestUsageService_IsAvailable_ResolvedViaPath covers the IsAvailable code
+// path where exec.LookPath resolves a bare command name from $PATH and
+// os.Stat then verifies the resolved binary. This mirrors the resolution
+// exec.CommandContext uses, so a bare name (e.g. "ccusage") in $PATH must
+// be reported available.
+func TestUsageService_IsAvailable_ResolvedViaPath(t *testing.T) {
+	service := newTestUsageService()
+
+	tempDir := t.TempDir()
+	binName := "cc-fake-shim"
+	binPath := filepath.Join(tempDir, binName)
+	require.NoError(t, os.WriteFile(binPath, []byte("#!/bin/bash\nexit 0"), 0o755))
+
+	// Prepend tempDir to PATH so LookPath resolves the bare name.
+	t.Setenv("PATH", tempDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	service.ccusagePath = binName
+	assert.True(t, service.IsAvailable(),
+		"bare command name resolvable via PATH should be reported available")
+
+	// Sanity: a bare name that is *not* in PATH must still be unavailable.
+	service.ccusagePath = "definitely-not-on-path-cc-shim-xyz"
+	assert.False(t, service.IsAvailable())
+}
+
+// TestUsageService_IsAvailable_BareNameInCWDNotOnPath guards against the
+// false-positive where IsAvailable used to report a bare command name as
+// available just because a same-named file existed in the cwd. exec.Command
+// resolves bare names via PATH only (never the cwd since Go 1.19), so the
+// availability check must stay aligned with that.
+func TestUsageService_IsAvailable_BareNameInCWDNotOnPath(t *testing.T) {
+	service := newTestUsageService()
+
+	tempDir := t.TempDir()
+	binName := "cc-cwd-only-shim"
+	require.NoError(t, os.WriteFile(filepath.Join(tempDir, binName),
+		[]byte("#!/bin/bash\nexit 0"), 0o755))
+
+	// Make tempDir the cwd but exclude it from PATH so the only way to
+	// "find" the binary is via the (incorrect) cwd-stat code path.
+	t.Chdir(tempDir)
+	t.Setenv("PATH", "/usr/bin:/bin")
+
+	service.ccusagePath = binName
+	assert.False(t, service.IsAvailable(),
+		"bare name resolvable only via cwd (not PATH) must report unavailable")
+}
+
 func TestUsageService_SetCCUsagePath(t *testing.T) {
 	service := newTestUsageService()
 
