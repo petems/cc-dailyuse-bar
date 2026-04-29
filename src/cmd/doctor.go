@@ -54,7 +54,7 @@ var doctorCmd = &cobra.Command{
 		fmt.Fprintf(cmd.OutOrStdout(), "Binary: Found at '%s'\n", path)
 
 		// 3. Connectivity Check (One-shot poll)
-		fmt.Fprintln(cmd.OutOrStdout(), "Connectivity: Testing API connection...")
+		fmt.Fprintf(cmd.OutOrStdout(), "Connectivity: Testing API connection (timeout: %ds)...\n", config.CmdTimeout)
 		usageService := services.NewUsageService(config)
 
 		state, err := usageService.UpdateUsage()
