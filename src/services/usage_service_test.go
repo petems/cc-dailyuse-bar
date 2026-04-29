@@ -95,10 +95,7 @@ func TestUsageService_IsAvailable_BareNameInCWDNotOnPath(t *testing.T) {
 
 	// Make tempDir the cwd but exclude it from PATH so the only way to
 	// "find" the binary is via the (incorrect) cwd-stat code path.
-	prevCwd, err := os.Getwd()
-	require.NoError(t, err)
-	require.NoError(t, os.Chdir(tempDir))
-	t.Cleanup(func() { _ = os.Chdir(prevCwd) })
+	t.Chdir(tempDir)
 	t.Setenv("PATH", "/usr/bin:/bin")
 
 	service.ccusagePath = binName
