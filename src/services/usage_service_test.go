@@ -56,6 +56,30 @@ func TestUsageService_IsAvailable(t *testing.T) {
 	assert.False(t, service.IsAvailable())
 }
 
+// TestUsageService_IsAvailable_ResolvedViaPath covers the new code path
+// introduced by the IsAvailable fix: when os.Stat on the configured value
+// fails, fall back to exec.LookPath and re-stat the resolved binary so a
+// bare command name (e.g. "ccusage") in $PATH is recognised as available.
+func TestUsageService_IsAvailable_ResolvedViaPath(t *testing.T) {
+	service := newTestUsageService()
+
+	tempDir := t.TempDir()
+	binName := "cc-fake-shim"
+	binPath := filepath.Join(tempDir, binName)
+	require.NoError(t, os.WriteFile(binPath, []byte("#!/bin/bash\nexit 0"), 0o755))
+
+	// Prepend tempDir to PATH so LookPath resolves the bare name.
+	t.Setenv("PATH", tempDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	service.ccusagePath = binName
+	assert.True(t, service.IsAvailable(),
+		"bare command name resolvable via PATH should be reported available")
+
+	// Sanity: a bare name that is *not* in PATH must still be unavailable.
+	service.ccusagePath = "definitely-not-on-path-cc-shim-xyz"
+	assert.False(t, service.IsAvailable())
+}
+
 func TestUsageService_SetCCUsagePath(t *testing.T) {
 	service := newTestUsageService()
 
