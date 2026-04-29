@@ -5,20 +5,46 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
 
+	"cc-dailyuse-bar/src/models"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"cc-dailyuse-bar/src/models"
 )
 
 // Helper function to create a usage service with default config
 func newTestUsageService() *UsageService {
 	config := models.ConfigDefaults()
 	return NewUsageService(config)
+}
+
+// waitForStableGoroutineCount polls runtime.NumGoroutine() until it returns
+// the same value across `stableFor` consecutive samples (10ms apart) or
+// `timeout` elapses, then returns that value. Used to capture a clean
+// "idle" baseline that isn't polluted by goroutines from earlier tests
+// still in the process of exiting.
+func waitForStableGoroutineCount(t *testing.T, stableFor, timeout time.Duration) int {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	last := runtime.NumGoroutine()
+	stableSince := time.Now()
+	for time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+		now := runtime.NumGoroutine()
+		if now != last {
+			last = now
+			stableSince = time.Now()
+			continue
+		}
+		if time.Since(stableSince) >= stableFor {
+			return last
+		}
+	}
+	return last
 }
 
 func TestNewUsageService(t *testing.T) {
@@ -283,6 +309,11 @@ func TestUsageService_StartDailyResetMonitor(t *testing.T) {
 // StartPolling produces a working second polling loop. Regression test for the
 // race where the second goroutine could observe a closed stop channel and exit
 // before its first tick.
+//
+// To avoid the second-phase assertion being satisfied by a leaked first
+// goroutine, each phase uses its own callback/counter, and we confirm the
+// first phase's counter stops incrementing after StopPolling before starting
+// the second phase.
 func TestUsageService_PollingRestart(t *testing.T) {
 	service := newTestUsageService()
 	service.StopPolling()
@@ -303,55 +334,121 @@ func TestUsageService_PollingRestart(t *testing.T) {
 		[]byte("#!/bin/bash\necho '"+string(jsonData)+"'"), 0o755))
 	service.ccusagePath = scriptPath
 
-	var mu sync.Mutex
-	var calls int
-	cb := func(_ *models.UsageState) {
-		mu.Lock()
-		calls++
-		mu.Unlock()
+	makeCounter := func() (cb func(*models.UsageState), get func() int) {
+		var mu sync.Mutex
+		var n int
+		cb = func(_ *models.UsageState) {
+			mu.Lock()
+			n++
+			mu.Unlock()
+		}
+		get = func() int {
+			mu.Lock()
+			defer mu.Unlock()
+			return n
+		}
+		return
 	}
 
-	require.NoError(t, service.StartPolling(1, cb))
+	cb1, count1 := makeCounter()
+	require.NoError(t, service.StartPolling(1, cb1))
+	time.Sleep(1500 * time.Millisecond)
+	require.GreaterOrEqual(t, count1(), 1, "first polling loop should have fired before stop")
 	service.StopPolling()
 
-	require.NoError(t, service.StartPolling(1, cb))
+	// Confirm the first goroutine has actually stopped — no further callbacks
+	// for a brief settle window — so the second phase isn't satisfied by a
+	// leaked first loop.
+	frozen := count1()
+	time.Sleep(1200 * time.Millisecond)
+	require.Equal(t, frozen, count1(), "first polling loop should not fire after StopPolling")
+
+	cb2, count2 := makeCounter()
+	require.NoError(t, service.StartPolling(1, cb2))
 	defer service.StopPolling()
 
-	// Allow at least one tick from the restarted polling loop.
 	time.Sleep(1500 * time.Millisecond)
-
-	mu.Lock()
-	got := calls
-	mu.Unlock()
-	assert.GreaterOrEqual(t, got, 1, "restarted polling loop should fire at least once")
+	assert.GreaterOrEqual(t, count2(), 1, "restarted polling loop should fire at least once")
 }
 
 // TestUsageService_StopPollingTwice asserts that StopPolling is idempotent
 // even after channels have been swapped, guarding against double-close panics
-// in the channel-swap helper.
+// in the channel-swap helper. Also covers StopDailyResetMonitor for the same
+// reason.
 func TestUsageService_StopPollingTwice(t *testing.T) {
 	service := newTestUsageService()
 
 	require.NoError(t, service.StartPolling(1, nil))
 	service.StopPolling()
 	assert.NotPanics(t, func() { service.StopPolling() })
+
+	service.StartDailyResetMonitor()
+	service.StopDailyResetMonitor()
+	assert.NotPanics(t, func() { service.StopDailyResetMonitor() })
+}
+
+// TestUsageService_StartPollingDoesNotStopResetMonitor guards the bug where
+// StartPolling internally called StopPolling, and StopPolling closed both the
+// polling and reset channels — so restarting polling silently killed the
+// midnight monitor. Now StopPolling only touches the polling channel.
+func TestUsageService_StartPollingDoesNotStopResetMonitor(t *testing.T) {
+	service := newTestUsageService()
+	service.StopPolling()
+	service.StopDailyResetMonitor()
+
+	baseline := waitForStableGoroutineCount(t, 100*time.Millisecond, 1*time.Second)
+	service.StartDailyResetMonitor()
+	defer service.StopDailyResetMonitor()
+	require.Eventually(t, func() bool { return runtime.NumGoroutine() > baseline },
+		500*time.Millisecond, 10*time.Millisecond,
+		"reset monitor goroutine should be running")
+	withResetMonitor := runtime.NumGoroutine()
+
+	// Now (re)start polling. The reset monitor must survive.
+	require.NoError(t, service.StartPolling(1, nil))
+	defer service.StopPolling()
+
+	// Allow polling goroutine to spin up; we expect at least the reset monitor
+	// goroutine count to be retained, plus the new polling goroutine.
+	require.Eventually(t, func() bool { return runtime.NumGoroutine() >= withResetMonitor+1 },
+		500*time.Millisecond, 10*time.Millisecond,
+		"polling restart should not have killed the reset monitor goroutine")
 }
 
 // TestUsageService_DailyResetRestart verifies the daily reset monitor can be
-// stopped and restarted without deadlocking, exercising the same channel-swap
-// pattern as the polling loop.
+// stopped and restarted without deadlocking, and that the second start
+// actually launches a live goroutine. The dailyResetLoop has no externally
+// observable signal short of midnight, so liveness is asserted via the
+// runtime goroutine count rising above the idle baseline after a stop and
+// restart cycle — with a sleep after stop to let the first goroutine retire,
+// so the post-restart count would equal the idle baseline if the second
+// goroutine had observed a closed channel and exited immediately.
 func TestUsageService_DailyResetRestart(t *testing.T) {
 	service := newTestUsageService()
 	service.StopPolling()
+	service.StopDailyResetMonitor()
+
+	// Earlier tests can leave goroutines mid-exit; wait for the runtime to
+	// settle before sampling idle, otherwise idle is inflated by zombies that
+	// then retire mid-test and make our delta assertions look like regressions.
+	idle := waitForStableGoroutineCount(t, 100*time.Millisecond, 1*time.Second)
 
 	service.StartDailyResetMonitor()
-	service.StopPolling()
+	require.Eventually(t, func() bool { return runtime.NumGoroutine() > idle },
+		500*time.Millisecond, 10*time.Millisecond,
+		"first StartDailyResetMonitor should add a goroutine")
+
+	service.StopDailyResetMonitor()
+	// Give the first goroutine time to actually exit before we restart, so any
+	// elevated goroutine count after the second start is attributable to the
+	// second goroutine alone.
+	time.Sleep(150 * time.Millisecond)
 
 	service.StartDailyResetMonitor()
-	defer service.StopPolling()
-
-	// A short sleep is enough; we're checking lifecycle, not midnight detection.
-	time.Sleep(100 * time.Millisecond)
+	defer service.StopDailyResetMonitor()
+	require.Eventually(t, func() bool { return runtime.NumGoroutine() > idle },
+		500*time.Millisecond, 10*time.Millisecond,
+		"after stop+restart, goroutine count must exceed idle — proves the restarted loop didn't observe a closed channel and exit immediately")
 }
 
 func TestUsageService_UpdateWithRetry_NotAvailable(t *testing.T) {

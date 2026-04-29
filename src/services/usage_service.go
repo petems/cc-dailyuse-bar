@@ -434,26 +434,38 @@ func (us *UsageService) StartPolling(intervalSeconds int, callback func(*models.
 	return nil
 }
 
-// StopPolling stops the polling timer
+// StopPolling stops the polling timer. It does NOT stop the daily reset
+// monitor — call StopDailyResetMonitor for that. Splitting them lets callers
+// restart polling (StartPolling internally calls StopPolling) without tearing
+// down a running midnight monitor.
 func (us *UsageService) StopPolling() {
 	us.mutex.Lock()
 	if us.ticker != nil {
 		us.ticker.Stop()
 		us.ticker = nil
 	}
-
 	pollStopChan := us.replaceStopChan(&us.pollStopChan)
-	resetStopChan := us.replaceStopChan(&us.resetStopChan)
 	us.mutex.Unlock()
 
 	if pollStopChan != nil {
 		close(pollStopChan)
 	}
+
+	us.logger.Info("Usage polling stopped")
+}
+
+// StopDailyResetMonitor stops the midnight detection goroutine started by
+// StartDailyResetMonitor. Idempotent.
+func (us *UsageService) StopDailyResetMonitor() {
+	us.mutex.Lock()
+	resetStopChan := us.replaceStopChan(&us.resetStopChan)
+	us.mutex.Unlock()
+
 	if resetStopChan != nil {
 		close(resetStopChan)
 	}
 
-	us.logger.Info("Usage polling stopped")
+	us.logger.Info("Daily reset monitor stopped")
 }
 
 func (us *UsageService) replaceStopChan(chPtr *chan struct{}) chan struct{} {
