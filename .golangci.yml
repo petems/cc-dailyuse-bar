@@ -1,20 +1,27 @@
 version: "2"
 
 run:
-  timeout: 5m
+  timeout: 10m
   modules-download-mode: readonly
 
 linters:
   enable:
+    - bodyclose
+    - errcheck
+    - gocritic
     - govet
-    - revive
     - ineffassign
     - misspell
-    - unused
+    - prealloc
+    - revive
     - staticcheck
+    - unconvert
+    - unused
   settings:
     govet:
       enable-all: true
+      disable:
+        - fieldalignment
     revive:
       rules:
         - name: exported

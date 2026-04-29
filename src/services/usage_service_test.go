@@ -486,12 +486,12 @@ func TestUsageService_ConcurrentAccess(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		go func(id int) {
 			defer wg.Done()
-			
+
 			// Test concurrent reads - no writes to avoid data races
 			state, err := service.GetDailyUsage()
 			assert.NoError(t, err)
 			assert.NotNil(t, state)
-			
+
 			// Verify the cached data is returned consistently
 			assert.True(t, state.IsAvailable)
 			assert.Equal(t, 100, state.DailyCount)
@@ -542,12 +542,12 @@ func TestUsageService_RealWorldScenarios(t *testing.T) {
 	assert.False(t, state.IsAvailable)
 
 	// Test scenario: valid ccusage with data
-	if _, err := exec.LookPath("ccusage"); err == nil {
+	if _, lookErr := exec.LookPath("ccusage"); lookErr == nil {
 		service.ccusagePath = "ccusage"
-		state, err := service.GetDailyUsage()
+		gotState, gotErr := service.GetDailyUsage()
 		// This might succeed or fail depending on environment
-		_ = state
-		_ = err
+		_ = gotState
+		_ = gotErr
 	}
 
 	// Test scenario: reset and update

@@ -27,11 +27,12 @@ func NewUsageState() *UsageState {
 
 // UpdateStatus calculates and updates the alert status based on cost thresholds
 func (u *UsageState) UpdateStatus(yellowThreshold, redThreshold float64) {
-	if u.DailyCost >= redThreshold {
+	switch {
+	case u.DailyCost >= redThreshold:
 		u.Status = Red
-	} else if u.DailyCost >= yellowThreshold {
+	case u.DailyCost >= yellowThreshold:
 		u.Status = Yellow
-	} else {
+	default:
 		u.Status = Green
 	}
 }

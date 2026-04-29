@@ -13,6 +13,7 @@ import (
 // LogLevel represents the severity of log messages
 type LogLevel int
 
+// Log level constants ordered from least to most severe.
 const (
 	DEBUG LogLevel = iota
 	INFO
@@ -164,7 +165,7 @@ func (l *Logger) log(level LogLevel, message string, context ...map[string]inter
 	}
 
 	// Write to configured destination for structured logging
-	fmt.Fprintln(l.writer, string(jsonData))
+	_, _ = fmt.Fprintln(l.writer, string(jsonData))
 }
 
 // WithContext creates a convenience function for logging with common context

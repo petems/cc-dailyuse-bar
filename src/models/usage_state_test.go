@@ -232,7 +232,7 @@ func TestUsageState_ConcurrentAccess(t *testing.T) {
 	state := NewUsageState()
 	yellowThreshold := 5.0
 	redThreshold := 10.0
-	
+
 	// Initialize state with test data to avoid data races
 	state.DailyCost = 7.5
 	state.UpdateStatus(yellowThreshold, redThreshold)
@@ -245,12 +245,12 @@ func TestUsageState_ConcurrentAccess(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		go func(id int) {
 			defer wg.Done()
-			
+
 			// Test concurrent reads of state
 			assert.Equal(t, 7.5, state.DailyCost)
 			assert.Equal(t, expectedStatus, state.Status)
 			assert.True(t, state.Status >= Green && state.Status <= Red)
-			
+
 		}(i)
 	}
 

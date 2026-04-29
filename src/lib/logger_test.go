@@ -236,7 +236,7 @@ func TestLogger_JSONMarshalError(t *testing.T) {
 
 	logger.Info("message with complex data", complexData)
 
-	w.Close()
+	_ = w.Close()
 	os.Stderr = originalStderr
 
 	buf := make([]byte, 4096)

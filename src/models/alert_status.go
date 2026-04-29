@@ -3,6 +3,7 @@ package models
 // AlertStatus represents the current alert level
 type AlertStatus int
 
+// Alert status values from least to most severe.
 const (
 	Green   AlertStatus = iota // Usage below yellow threshold
 	Yellow                     // Usage above yellow, below red threshold
@@ -45,6 +46,7 @@ func (a AlertStatus) ToTrayIcon() TrayIcon {
 // TrayIcon represents different icon states for the system tray
 type TrayIcon int
 
+// Tray icon states corresponding to alert levels.
 const (
 	IconGreen   TrayIcon = iota // Normal usage level
 	IconYellow                  // Warning usage level
