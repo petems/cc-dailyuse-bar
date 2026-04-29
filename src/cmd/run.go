@@ -28,18 +28,14 @@ var runCmd = &cobra.Command{
 	Long: `Start the CC Daily Use Bar in the system tray.
 This is the default mode if no command is specified.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if daemonMode {
-			return runAsDaemon()
-		}
-
+		// Validate the parent process before forking a daemon — otherwise the
+		// parent prints a success PID even when the child is guaranteed to fail
+		// (no GUI build, bad config, invalid flags).
 		if runTrayApp == nil {
-			return fmt.Errorf("this binary was built without GUI support (use a build without the 'nogui' tag)")
+			return lib.NewError(lib.ErrCodeSystem, "this binary was built without GUI support (use a build without the 'nogui' tag)")
 		}
 
-		// Initialize Config Service
 		configService := services.NewConfigService()
-
-		// Set custom config path if provided via persistent flag
 		if cfgFile != "" {
 			configService.SetConfigPath(cfgFile)
 		}
@@ -48,12 +44,15 @@ This is the default mode if no command is specified.`,
 		// here is a real failure (parse, permissions, validation). Don't mask it.
 		config, err := configService.Load()
 		if err != nil {
-			return fmt.Errorf("failed to load configuration: %w", err)
+			return lib.WrapError(err, lib.ErrCodeConfig, "failed to load configuration")
 		}
 
-		// Merge flags into config
 		if err := mergeConfig(config, cmd); err != nil {
-			return fmt.Errorf("invalid configuration after flag overrides: %w", err)
+			return lib.WrapError(err, lib.ErrCodeValidation, "invalid configuration after flag overrides")
+		}
+
+		if daemonMode {
+			return runAsDaemon()
 		}
 
 		return runTrayApp(cmd, config)
@@ -105,17 +104,14 @@ func mergeConfig(config *models.Config, cmd *cobra.Command) error {
 }
 
 // buildDaemonArgs constructs the argument list for the daemon subprocess,
-// stripping --daemon/-d flags and ensuring "run" is the subcommand.
+// stripping --daemon/-d flags and ensuring "run" is at the subcommand position.
+// Bare "run" tokens that appear later in the list (e.g. as a flag value like
+// `--config run`) are preserved verbatim.
 func buildDaemonArgs(osArgs []string) []string {
-	args := []string{"run"}
+	args := make([]string, 0, len(osArgs))
 
 	for i := 1; i < len(osArgs); i++ {
 		arg := osArgs[i]
-
-		// Skip the "run" subcommand (we add it explicitly)
-		if arg == "run" {
-			continue
-		}
 
 		// Skip --daemon / -d in all forms
 		if arg == "--daemon" || arg == "-d" {
@@ -126,6 +122,10 @@ func buildDaemonArgs(osArgs []string) []string {
 		}
 
 		args = append(args, arg)
+	}
+
+	if len(args) == 0 || args[0] != "run" {
+		args = append([]string{"run"}, args...)
 	}
 
 	return args
@@ -140,11 +140,24 @@ func runAsDaemon() error {
 	args := buildDaemonArgs(os.Args)
 
 	cmd := exec.Command(execPath, args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	// Detach the child from the parent's terminal — leaving Stdout/Stderr wired
+	// up means closing the terminal sends SIGHUP to the daemon. Discarding to
+	// /dev/null lets the parent exit cleanly without dragging the child down.
+	devNull, err := os.OpenFile(os.DevNull, os.O_RDWR, 0)
+	if err != nil {
+		return lib.WrapError(err, lib.ErrCodeSystem, "failed to open /dev/null")
+	}
+	cmd.Stdin = devNull
+	cmd.Stdout = devNull
+	cmd.Stderr = devNull
 
-	if err := cmd.Start(); err != nil {
-		return lib.WrapError(err, lib.ErrCodeSystem, "failed to start daemon")
+	startErr := cmd.Start()
+	// The child has dup'd its own fds; the parent's devNull is no longer needed.
+	if cerr := devNull.Close(); cerr != nil && startErr == nil {
+		startErr = cerr
+	}
+	if startErr != nil {
+		return lib.WrapError(startErr, lib.ErrCodeSystem, "failed to start daemon")
 	}
 
 	fmt.Printf("CC Daily Use Bar started as daemon (PID: %d)\n", cmd.Process.Pid)

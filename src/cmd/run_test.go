@@ -116,6 +116,12 @@ func TestBuildDaemonArgs_Basic(t *testing.T) {
 			osArgs:   []string{"./app", "run", "-d", "--config", "/tmp/config.yaml"},
 			expected: []string{"run", "--config", "/tmp/config.yaml"},
 		},
+		{
+			// Regression: a flag value that happens to equal "run" must not be stripped.
+			name:     "preserves run as a flag value",
+			osArgs:   []string{"./app", "--config", "run", "--daemon"},
+			expected: []string{"run", "--config", "run"},
+		},
 	}
 
 	for _, tt := range tests {
