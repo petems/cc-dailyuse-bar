@@ -418,18 +418,18 @@ func (us *UsageService) StartPolling(intervalSeconds int, callback func(*models.
 
 	ticker := time.NewTicker(time.Duration(intervalSeconds) * time.Second)
 
-	// Create ticker and assign callback atomically with mutex protection
+	// Launch the goroutine while still holding the mutex so a concurrent
+	// StopPolling() cannot close the captured stop channel before the loop
+	// observes it.
 	us.mutex.Lock()
 	us.updateCallback = callback
 	us.ticker = ticker
-	stopChan := us.pollStopChan
+	go us.pollingLoop(ticker, us.pollStopChan)
 	us.mutex.Unlock()
 
 	us.logger.Info("Starting usage polling", map[string]interface{}{
 		"intervalSeconds": intervalSeconds,
 	})
-
-	go us.pollingLoop(ticker, stopChan)
 
 	return nil
 }
@@ -499,11 +499,12 @@ func (us *UsageService) pollingLoop(ticker *time.Ticker, stopChan <-chan struct{
 
 // T031: Daily reset scheduler with midnight detection
 func (us *UsageService) StartDailyResetMonitor() {
+	// Launch under the read lock so StopPolling cannot replace/close the
+	// captured stop channel between the read and the goroutine start.
 	us.mutex.RLock()
-	stopChan := us.resetStopChan
+	go us.dailyResetLoop(us.resetStopChan)
 	us.mutex.RUnlock()
 
-	go us.dailyResetLoop(stopChan)
 	us.logger.Info("Daily reset monitor started")
 }
 

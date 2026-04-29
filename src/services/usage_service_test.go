@@ -279,6 +279,81 @@ func TestUsageService_StartDailyResetMonitor(t *testing.T) {
 	service.StopPolling()
 }
 
+// TestUsageService_PollingRestart verifies that StartPolling -> StopPolling ->
+// StartPolling produces a working second polling loop. Regression test for the
+// race where the second goroutine could observe a closed stop channel and exit
+// before its first tick.
+func TestUsageService_PollingRestart(t *testing.T) {
+	service := newTestUsageService()
+	service.StopPolling()
+
+	// Point ccusage at a fast shim so updateWithRetry returns immediately and
+	// the callback fires within the test's wait window.
+	tempDir := t.TempDir()
+	scriptPath := filepath.Join(tempDir, "fake-ccusage")
+	today := time.Now().Format("2006-01-02")
+	resp := CCUsageResponse{
+		Daily: []CCUsageOutput{{Date: today, TotalTokens: 1, TotalCost: 0.01}},
+	}
+	resp.Totals.TotalTokens = 1
+	resp.Totals.TotalCost = 0.01
+	jsonData, err := json.Marshal(resp)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(scriptPath,
+		[]byte("#!/bin/bash\necho '"+string(jsonData)+"'"), 0o755))
+	service.ccusagePath = scriptPath
+
+	var mu sync.Mutex
+	var calls int
+	cb := func(_ *models.UsageState) {
+		mu.Lock()
+		calls++
+		mu.Unlock()
+	}
+
+	require.NoError(t, service.StartPolling(1, cb))
+	service.StopPolling()
+
+	require.NoError(t, service.StartPolling(1, cb))
+	defer service.StopPolling()
+
+	// Allow at least one tick from the restarted polling loop.
+	time.Sleep(1500 * time.Millisecond)
+
+	mu.Lock()
+	got := calls
+	mu.Unlock()
+	assert.GreaterOrEqual(t, got, 1, "restarted polling loop should fire at least once")
+}
+
+// TestUsageService_StopPollingTwice asserts that StopPolling is idempotent
+// even after channels have been swapped, guarding against double-close panics
+// in the channel-swap helper.
+func TestUsageService_StopPollingTwice(t *testing.T) {
+	service := newTestUsageService()
+
+	require.NoError(t, service.StartPolling(1, nil))
+	service.StopPolling()
+	assert.NotPanics(t, func() { service.StopPolling() })
+}
+
+// TestUsageService_DailyResetRestart verifies the daily reset monitor can be
+// stopped and restarted without deadlocking, exercising the same channel-swap
+// pattern as the polling loop.
+func TestUsageService_DailyResetRestart(t *testing.T) {
+	service := newTestUsageService()
+	service.StopPolling()
+
+	service.StartDailyResetMonitor()
+	service.StopPolling()
+
+	service.StartDailyResetMonitor()
+	defer service.StopPolling()
+
+	// A short sleep is enough; we're checking lifecycle, not midnight detection.
+	time.Sleep(100 * time.Millisecond)
+}
+
 func TestUsageService_UpdateWithRetry_NotAvailable(t *testing.T) {
 	service := newTestUsageService()
 
