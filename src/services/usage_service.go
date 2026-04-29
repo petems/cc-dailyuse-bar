@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"sync"
@@ -331,6 +332,12 @@ func (us *UsageService) executeCCUsage() ([]byte, error) {
 	cmd := exec.CommandContext(ctx, us.ccusagePath, "daily", "--json")
 	output, err := cmd.Output()
 	if err != nil {
+		// When the context deadline fires, Go kills the child with SIGKILL and
+		// surfaces a generic "signal: killed". Translate it so users see what
+		// actually happened and how to fix it.
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return output, fmt.Errorf("ccusage timed out after %s; increase cmd_timeout in config", us.cmdTimeout)
+		}
 		return output, err
 	}
 

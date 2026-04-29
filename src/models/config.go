@@ -26,7 +26,7 @@ func ConfigDefaults() *Config {
 		RedThreshold:    20.00,
 		DebugLevel:      "INFO",
 		CacheWindow:     10, // 10 seconds cache window
-		CmdTimeout:      5,  // 5 seconds command timeout
+		CmdTimeout:      30, // ccusage has Node.js startup overhead and can take 10-15s on cold runs
 	}
 }
 

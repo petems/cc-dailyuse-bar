@@ -31,7 +31,7 @@ func TestNewUsageService(t *testing.T) {
 	assert.NotNil(t, service.logger)
 	// Logger component is not exported, so we can't test it directly
 	assert.Equal(t, 10*time.Second, service.cacheWindow)
-	assert.Equal(t, 5*time.Second, service.cmdTimeout)
+	assert.Equal(t, 30*time.Second, service.cmdTimeout)
 	assert.NotNil(t, service.pollStopChan)
 }
 
