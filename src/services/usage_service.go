@@ -156,17 +156,18 @@ func (us *UsageService) IsAvailable() bool {
 		return false
 	}
 
-	info, err := os.Stat(us.ccusagePath)
+	// Resolve via exec.LookPath first so the availability check follows the
+	// same rules as exec.CommandContext (PATH-only for bare names, never the
+	// cwd). Otherwise IsAvailable could return true for a file in the working
+	// directory that exec would later fail to find.
+	resolvedPath, err := exec.LookPath(us.ccusagePath)
 	if err != nil {
-		resolvedPath, pathErr := exec.LookPath(us.ccusagePath)
-		if pathErr != nil {
-			return false
-		}
+		return false
+	}
 
-		info, err = os.Stat(resolvedPath)
-		if err != nil {
-			return false
-		}
+	info, err := os.Stat(resolvedPath)
+	if err != nil {
+		return false
 	}
 
 	if info.IsDir() {

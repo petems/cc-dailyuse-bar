@@ -80,6 +80,32 @@ func TestUsageService_IsAvailable_ResolvedViaPath(t *testing.T) {
 	assert.False(t, service.IsAvailable())
 }
 
+// TestUsageService_IsAvailable_BareNameInCWDNotOnPath guards against the
+// false-positive where IsAvailable used to report a bare command name as
+// available just because a same-named file existed in the cwd. exec.Command
+// resolves bare names via PATH only (never the cwd since Go 1.19), so the
+// availability check must stay aligned with that.
+func TestUsageService_IsAvailable_BareNameInCWDNotOnPath(t *testing.T) {
+	service := newTestUsageService()
+
+	tempDir := t.TempDir()
+	binName := "cc-cwd-only-shim"
+	require.NoError(t, os.WriteFile(filepath.Join(tempDir, binName),
+		[]byte("#!/bin/bash\nexit 0"), 0o755))
+
+	// Make tempDir the cwd but exclude it from PATH so the only way to
+	// "find" the binary is via the (incorrect) cwd-stat code path.
+	prevCwd, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(tempDir))
+	t.Cleanup(func() { _ = os.Chdir(prevCwd) })
+	t.Setenv("PATH", "/usr/bin:/bin")
+
+	service.ccusagePath = binName
+	assert.False(t, service.IsAvailable(),
+		"bare name resolvable only via cwd (not PATH) must report unavailable")
+}
+
 func TestUsageService_SetCCUsagePath(t *testing.T) {
 	service := newTestUsageService()
 
