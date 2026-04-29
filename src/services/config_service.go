@@ -17,13 +17,17 @@ type ConfigService struct {
 	logger     *lib.Logger
 	configPath string // Override for testing
 	readFile   func(string) ([]byte, error)
+	writeFile  func(string, []byte, os.FileMode) error
+	mkdirAll   func(string, os.FileMode) error
 }
 
 // NewConfigService creates a new ConfigService instance
 func NewConfigService() *ConfigService {
 	return &ConfigService{
-		logger:   lib.NewLogger("config-service"),
-		readFile: os.ReadFile,
+		logger:    lib.NewLogger("config-service"),
+		readFile:  os.ReadFile,
+		writeFile: os.WriteFile,
+		mkdirAll:  os.MkdirAll,
 	}
 }
 
@@ -56,9 +60,47 @@ func (cs *ConfigService) Load() (*models.Config, error) {
 	return &config, nil
 }
 
+// Save writes the configuration to disk
+func (cs *ConfigService) Save(config *models.Config) error {
+	// Validate before saving
+	if err := cs.Validate(config); err != nil {
+		return err
+	}
+
+	data, err := yaml.Marshal(config)
+	if err != nil {
+		return lib.WrapError(err, lib.ErrCodeConfig, "failed to marshal config")
+	}
+
+	configPath := cs.GetConfigPath()
+
+	// Ensure directory exists
+	if err := cs.EnsureConfigDir(); err != nil {
+		return err
+	}
+
+	if err := cs.writeFile(configPath, data, 0644); err != nil {
+		return lib.WrapError(err, lib.ErrCodeConfig, "failed to write config file")
+	}
+
+	return nil
+}
+
+// EnsureConfigDir ensures the configuration directory exists
+func (cs *ConfigService) EnsureConfigDir() error {
+	dir := filepath.Dir(cs.GetConfigPath())
+	if err := cs.mkdirAll(dir, 0755); err != nil {
+		return lib.WrapError(err, lib.ErrCodeConfig, "failed to create config directory")
+	}
+	return nil
+}
+
 // Validate checks configuration values for correctness
 // Returns error describing first validation failure found
 func (cs *ConfigService) Validate(config *models.Config) error {
+	if config == nil {
+		return lib.ValidationError("config is nil")
+	}
 	return config.Validate()
 }
 
@@ -83,4 +125,22 @@ func (cs *ConfigService) SetReadFile(reader func(string) ([]byte, error)) {
 		return
 	}
 	cs.readFile = reader
+}
+
+// SetWriteFile allows tests to override the file writer logic.
+func (cs *ConfigService) SetWriteFile(writer func(string, []byte, os.FileMode) error) {
+	if writer == nil {
+		cs.writeFile = os.WriteFile
+		return
+	}
+	cs.writeFile = writer
+}
+
+// SetMkdirAll allows tests to override the mkdir logic.
+func (cs *ConfigService) SetMkdirAll(mkdir func(string, os.FileMode) error) {
+	if mkdir == nil {
+		cs.mkdirAll = os.MkdirAll
+		return
+	}
+	cs.mkdirAll = mkdir
 }

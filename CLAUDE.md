@@ -33,7 +33,6 @@ The application follows a clean architecture pattern with clear separation of co
 - **Error Wrapping**: Custom error types with categorization (ErrCodeCCUsage, ErrCodeValidation, etc.)
 - **Polling Architecture**: Configurable polling intervals with retry logic
 - **XDG Compliance**: Configuration stored in standard XDG directories
-- **Internationalization**: Built-in English/Japanese localization support
 
 ## Common Development Commands
 

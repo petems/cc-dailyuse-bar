@@ -180,6 +180,18 @@ func TestConfigService_Validate(t *testing.T) {
 	}
 }
 
+// Pins the nil-config guard added in commit a495947. Without the guard,
+// Validate would dereference nil and panic instead of returning a typed
+// validation error.
+func TestConfigService_ValidateNil(t *testing.T) {
+	svc := NewConfigService()
+
+	err := svc.Validate(nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "VALIDATION_ERROR")
+	assert.Contains(t, err.Error(), "nil")
+}
+
 func TestConfigService_SetReadFileResetToDefault(t *testing.T) {
 	svc := NewConfigService()
 	svc.SetConfigPath("nonexistent.yaml")
@@ -190,4 +202,109 @@ func TestConfigService_SetReadFileResetToDefault(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, cfg)
 	assert.Equal(t, models.ConfigDefaults(), cfg)
+}
+
+func TestConfigService_EnsureConfigDir(t *testing.T) {
+	svc := NewConfigService()
+	configPath := filepath.FromSlash("/home/user/.config/cc-dailyuse-bar/config.yaml")
+	svc.SetConfigPath(configPath)
+
+	var capturedPath string
+	var capturedMode os.FileMode
+
+	svc.SetMkdirAll(func(path string, mode os.FileMode) error {
+		capturedPath = path
+		capturedMode = mode
+		return nil
+	})
+
+	err := svc.EnsureConfigDir()
+	require.NoError(t, err)
+	assert.Equal(t, filepath.Dir(configPath), capturedPath)
+	assert.Equal(t, os.FileMode(0755), capturedMode)
+}
+
+func TestConfigService_EnsureConfigDirError(t *testing.T) {
+	svc := NewConfigService()
+	expectedErr := errors.New("mkdir failed")
+	svc.SetMkdirAll(func(path string, mode os.FileMode) error {
+		return expectedErr
+	})
+
+	err := svc.EnsureConfigDir()
+	require.Error(t, err)
+	assert.ErrorIs(t, err, expectedErr)
+}
+
+func TestConfigService_Save(t *testing.T) {
+	svc := NewConfigService()
+	svc.SetConfigPath("/test/config.yaml")
+
+	// Mock MkdirAll
+	svc.SetMkdirAll(func(path string, mode os.FileMode) error {
+		return nil
+	})
+
+	// Mock WriteFile
+	var capturedData []byte
+	var capturedPath string
+	svc.SetWriteFile(func(path string, data []byte, mode os.FileMode) error {
+		capturedPath = path
+		capturedData = data
+		return nil
+	})
+
+	cfg := models.ConfigDefaults()
+	cfg.YellowThreshold = 12.34
+
+	err := svc.Save(cfg)
+	require.NoError(t, err)
+
+	assert.Equal(t, "/test/config.yaml", capturedPath)
+	assert.Contains(t, string(capturedData), "yellow_threshold: 12.34")
+}
+
+func TestConfigService_SaveValidationFailed(t *testing.T) {
+	svc := NewConfigService()
+	cfg := models.ConfigDefaults()
+	cfg.CCUsagePath = "" // Invalid
+
+	err := svc.Save(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "ccusage_path")
+}
+
+func TestConfigService_SaveNil(t *testing.T) {
+	svc := NewConfigService()
+
+	require.NotPanics(t, func() {
+		err := svc.Save(nil)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "config is nil")
+	})
+}
+
+func TestConfigService_SaveMkdirFailed(t *testing.T) {
+	svc := NewConfigService()
+	svc.SetMkdirAll(func(path string, mode os.FileMode) error {
+		return errors.New("mkdir error")
+	})
+
+	err := svc.Save(models.ConfigDefaults())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "mkdir error")
+}
+
+func TestConfigService_SaveWriteFailed(t *testing.T) {
+	svc := NewConfigService()
+	svc.SetMkdirAll(func(path string, mode os.FileMode) error {
+		return nil
+	})
+	svc.SetWriteFile(func(path string, data []byte, mode os.FileMode) error {
+		return errors.New("write error")
+	})
+
+	err := svc.Save(models.ConfigDefaults())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "write error")
 }

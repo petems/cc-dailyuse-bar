@@ -14,6 +14,8 @@ func TestConfigDefaults(t *testing.T) {
 	assert.Equal(t, 10.0, config.YellowThreshold)
 	assert.Equal(t, 20.0, config.RedThreshold)
 	assert.Equal(t, "INFO", config.DebugLevel)
+	assert.Equal(t, 10, config.CacheWindow)
+	assert.Equal(t, 30, config.CmdTimeout)
 }
 
 func TestConfig_Validate_ValidConfig(t *testing.T) {

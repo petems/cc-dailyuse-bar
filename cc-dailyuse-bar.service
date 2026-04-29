@@ -5,7 +5,7 @@ After=network.target
 [Service]
 Type=simple
 User=%i
-ExecStart=/usr/local/bin/cc-dailyuse-bar
+ExecStart=/usr/local/bin/cc-dailyuse-bar run
 Restart=always
 RestartSec=10
 Environment=DISPLAY=:0

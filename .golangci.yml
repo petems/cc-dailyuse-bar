@@ -3,12 +3,15 @@ version: "2"
 run:
   timeout: 10m
   modules-download-mode: readonly
+  go: "1.21"
 
 linters:
   enable:
     - bodyclose
     - errcheck
+    - errorlint
     - gocritic
+    - gosec
     - govet
     - ineffassign
     - misspell
@@ -25,6 +28,32 @@ linters:
     revive:
       rules:
         - name: exported
+    errcheck:
+      check-type-assertions: true
+    gosec:
+      excludes:
+        - G104 # already covered by errcheck
+
+  exclusions:
+    generated: lax
+    rules:
+      # fmt.Fprint* to stdout/stderr in CLI commands — return values are safe to ignore
+      - linters: [errcheck]
+        text: "Error return value of `fmt\\.Fprint"
+      # Subprocess launched with variable is expected for ccusage binary invocation
+      - linters: [gosec]
+        text: "G204"
+      # Test files need executable permissions for test scripts
+      - linters: [gosec]
+        text: "G306"
+        path: _test\.go
+      # G101 false-positive on config field names like "ccusage_path" referenced in test cases — not credentials
+      - linters: [gosec]
+        text: "G101"
+        path: _test\.go
+    paths:
+      - vendor
+      - third_party
 
 formatters:
   enable:

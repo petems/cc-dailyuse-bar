@@ -183,6 +183,11 @@ func SetGlobalLevel(level LogLevel) {
 	globalLogger.SetLevel(level)
 }
 
+// GetGlobalLevel returns the current global logger level
+func GetGlobalLevel() LogLevel {
+	return globalLogger.level
+}
+
 // SetGlobalOutput sets the output writer for global logging and future loggers
 func SetGlobalOutput(writer io.Writer) {
 	setDefaultWriter(writer)

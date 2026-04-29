@@ -12,7 +12,6 @@ A system tray application that monitors your daily Claude Code usage and display
 - **System tray integration**: Runs in the background with menu bar access
 - **Automatic updates**: Configurable polling interval with resilient polling service
 - **XDG compliance**: Stores configuration in standard XDG directories
-- **Multi-language support**: English and Japanese localization
 - **Smart caching**: Avoids hitting `ccusage` more often than necessary and surfaces health issues clearly
 
 
@@ -87,7 +86,36 @@ cmd_timeout: 5
 
 ## Usage
 
-### Running the Application
+### CLI Commands
+
+The application provides a structured CLI:
+
+```bash
+# Start the system tray application (default)
+cc-dailyuse-bar run
+# OR simply
+cc-dailyuse-bar
+
+# Run as daemon (background process)
+cc-dailyuse-bar run --daemon
+
+# Initialize a new configuration file
+cc-dailyuse-bar config init
+
+# Validate the current configuration
+cc-dailyuse-bar config validate
+
+# Show effective configuration
+cc-dailyuse-bar config show
+
+# Check health and connectivity
+cc-dailyuse-bar doctor
+
+# Print version information
+cc-dailyuse-bar version
+```
+
+### Running the Application (Dev/Make)
 
 ```bash
 # Run directly
@@ -98,10 +126,7 @@ make daemon
 
 # Or build and run
 make build
-./cc-dailyuse-bar
-
-# Run as daemon with command line flag
-./cc-dailyuse-bar --daemon
+./cc-dailyuse-bar run
 ```
 
 ### System Tray Menu
