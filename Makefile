@@ -12,9 +12,15 @@ BINARY_UNIX=$(BINARY_NAME)_unix
 GOLANGCI_LINT=golangci-lint
 LINT_TIMEOUT=5m
 
+# Versioning
+VERSION ?= $(shell git describe --tags --always --dirty || echo dev)
+COMMIT ?= $(shell git rev-parse --short HEAD || echo none)
+DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ" || echo unknown)
+
 # Build flags
-LDFLAGS=-ldflags "-s -w"
-LDFLAGS_GUI=-ldflags "-s -w -H windowsgui"
+LDFLAGS_FLAGS=-s -w -X cc-dailyuse-bar/src/cmd.Version=$(VERSION) -X cc-dailyuse-bar/src/cmd.Commit=$(COMMIT) -X cc-dailyuse-bar/src/cmd.Date=$(DATE)
+LDFLAGS=-ldflags "$(LDFLAGS_FLAGS)"
+LDFLAGS_GUI=-ldflags "$(LDFLAGS_FLAGS) -H windowsgui"
 BUILD_FLAGS=-v
 
 .PHONY: all build clean test coverage coverage-html coverage-func deps lint fmt vet help run install \
@@ -101,11 +107,11 @@ vet:
 
 # Run the application
 run:
-	$(GOCMD) run ./src
+	$(GOCMD) run ./src run
 
 # Run as daemon (background process)
 daemon:
-	$(GOCMD) run ./src --daemon
+	$(GOCMD) run ./src run --daemon
 
 # Install the binary
 install:
@@ -196,7 +202,13 @@ dev-setup: deps
 	@echo "Setting up development environment..."
 	@if ! command -v golangci-lint >/dev/null 2>&1; then \
 		echo "Installing golangci-lint..."; \
-		curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $$(go env GOPATH)/bin v1.54.2; \
+		curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $$(go env GOPATH)/bin v2.10.1; \
+	fi
+	@if command -v pre-commit >/dev/null 2>&1; then \
+		echo "Installing pre-commit hooks..."; \
+		pre-commit install; \
+	else \
+		echo "pre-commit not found. Install it with: pip install pre-commit (or brew install pre-commit)"; \
 	fi
 
 # CI pipeline

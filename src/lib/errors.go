@@ -1,6 +1,7 @@
 package lib
 
 import (
+	"errors"
 	"fmt"
 	"runtime"
 	"strings"
@@ -152,7 +153,8 @@ func TemplateError(message string) *AppError {
 
 // IsErrorCode checks if an error has a specific error code
 func IsErrorCode(err error, code string) bool {
-	if appErr, ok := err.(*AppError); ok {
+	var appErr *AppError
+	if errors.As(err, &appErr) {
 		return appErr.Code == code
 	}
 	return false
@@ -160,7 +162,8 @@ func IsErrorCode(err error, code string) bool {
 
 // GetErrorCode returns the error code from an AppError, or empty string for other errors
 func GetErrorCode(err error) string {
-	if appErr, ok := err.(*AppError); ok {
+	var appErr *AppError
+	if errors.As(err, &appErr) {
 		return appErr.Code
 	}
 	return ""

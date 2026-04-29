@@ -1,0 +1,156 @@
+package cmd
+
+import (
+	"fmt"
+	"os"
+	"os/exec"
+	"strings"
+
+	"github.com/spf13/cobra"
+
+	"cc-dailyuse-bar/src/lib"
+	"cc-dailyuse-bar/src/models"
+	"cc-dailyuse-bar/src/services"
+)
+
+var daemonMode bool
+
+var logger = lib.NewLogger("cmd-run")
+
+// runTrayApp is set by the platform-specific run_tray.go file.
+// It is nil when built with the "nogui" tag.
+var runTrayApp func(cmd *cobra.Command, config *models.Config) error
+
+// runCmd represents the run command
+var runCmd = &cobra.Command{
+	Use:   "run",
+	Short: "Launch the system tray application",
+	Long: `Start the CC Daily Use Bar in the system tray.
+This is the default mode if no command is specified.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if daemonMode {
+			return runAsDaemon()
+		}
+
+		if runTrayApp == nil {
+			return fmt.Errorf("this binary was built without GUI support (use a build without the 'nogui' tag)")
+		}
+
+		// Initialize Config Service
+		configService := services.NewConfigService()
+
+		// Set custom config path if provided via persistent flag
+		if cfgFile != "" {
+			configService.SetConfigPath(cfgFile)
+		}
+
+		config, err := configService.Load()
+		if err != nil {
+			logger.Warn("Failed to load configuration, using defaults", map[string]interface{}{
+				"error": err.Error(),
+			})
+			config = models.ConfigDefaults()
+		}
+
+		// Merge flags into config
+		if err := mergeConfig(config, cmd); err != nil {
+			return fmt.Errorf("invalid configuration after flag overrides: %w", err)
+		}
+
+		return runTrayApp(cmd, config)
+	},
+}
+
+func init() {
+	RootCmd.AddCommand(runCmd)
+
+	// Local flags for run command
+	runCmd.Flags().BoolVarP(&daemonMode, "daemon", "d", false, "Run as daemon (background process)")
+	runCmd.Flags().Int("update-interval", 0, "Update interval in seconds")
+	runCmd.Flags().Float64("yellow-threshold", 0, "Yellow alert threshold ($)")
+	runCmd.Flags().Float64("red-threshold", 0, "Red alert threshold ($)")
+	runCmd.Flags().String("ccusage-path", "", "Path to ccusage binary")
+	runCmd.Flags().Int("cache-window", 0, "Cache window in seconds")
+	runCmd.Flags().Int("cmd-timeout", 0, "Command timeout in seconds")
+}
+
+func mergeConfig(config *models.Config, cmd *cobra.Command) error {
+	flags := cmd.Flags()
+
+	if flags.Changed("update-interval") {
+		v, _ := flags.GetInt("update-interval")
+		config.UpdateInterval = v
+	}
+	if flags.Changed("yellow-threshold") {
+		v, _ := flags.GetFloat64("yellow-threshold")
+		config.YellowThreshold = v
+	}
+	if flags.Changed("red-threshold") {
+		v, _ := flags.GetFloat64("red-threshold")
+		config.RedThreshold = v
+	}
+	if flags.Changed("ccusage-path") {
+		v, _ := flags.GetString("ccusage-path")
+		config.CCUsagePath = v
+	}
+	if flags.Changed("cache-window") {
+		v, _ := flags.GetInt("cache-window")
+		config.CacheWindow = v
+	}
+	if flags.Changed("cmd-timeout") {
+		v, _ := flags.GetInt("cmd-timeout")
+		config.CmdTimeout = v
+	}
+
+	return config.Validate()
+}
+
+// buildDaemonArgs constructs the argument list for the daemon subprocess,
+// stripping --daemon/-d flags and ensuring "run" is the subcommand.
+func buildDaemonArgs(osArgs []string) []string {
+	args := []string{"run"}
+
+	for i := 1; i < len(osArgs); i++ {
+		arg := osArgs[i]
+
+		// Skip the "run" subcommand (we add it explicitly)
+		if arg == "run" {
+			continue
+		}
+
+		// Skip --daemon / -d in all forms
+		if arg == "--daemon" || arg == "-d" {
+			continue
+		}
+		if strings.HasPrefix(arg, "--daemon=") {
+			continue
+		}
+
+		args = append(args, arg)
+	}
+
+	return args
+}
+
+func runAsDaemon() error {
+	execPath, err := os.Executable()
+	if err != nil {
+		return lib.WrapError(err, lib.ErrCodeSystem, "failed to get executable path")
+	}
+
+	args := buildDaemonArgs(os.Args)
+
+	cmd := exec.Command(execPath, args...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Start(); err != nil {
+		return lib.WrapError(err, lib.ErrCodeSystem, "failed to start daemon")
+	}
+
+	fmt.Printf("CC Daily Use Bar started as daemon (PID: %d)\n", cmd.Process.Pid)
+	fmt.Printf("To stop: kill %d\n", cmd.Process.Pid)
+
+	os.Exit(0)
+	return nil // unreachable, but satisfies compiler
+}
