@@ -28,7 +28,8 @@ var doctorCmd = &cobra.Command{
 		// 1. Config Check
 		config, err := svc.Load()
 		if err != nil {
-			return fmt.Errorf("config: failed to load configuration: %w", err)
+			return fmt.Errorf("config: failed to load configuration from %q; fix the file or run 'cc-dailyuse-bar config init --force' to reset to defaults: %w",
+				svc.GetConfigPath(), err)
 		}
 		fmt.Fprintf(cmd.OutOrStdout(), "Config: Valid (loaded from %s)\n", svc.GetConfigPath())
 

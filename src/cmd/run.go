@@ -44,7 +44,9 @@ This is the default mode if no command is specified.`,
 		// here is a real failure (parse, permissions, validation). Don't mask it.
 		config, err := configService.Load()
 		if err != nil {
-			return lib.WrapError(err, lib.ErrCodeConfig, "failed to load configuration")
+			return lib.WrapError(err, lib.ErrCodeConfig,
+				fmt.Sprintf("failed to load configuration from %q; fix the file or run 'cc-dailyuse-bar config init --force' to reset to defaults",
+					configService.GetConfigPath()))
 		}
 
 		if err := mergeConfig(config, cmd); err != nil {
