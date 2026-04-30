@@ -1,0 +1,41 @@
+cask "cc-dailyuse-bar" do
+  version "__VERSION__"
+  sha256 "__SHA256__"
+
+  url "https://github.com/petems/cc-dailyuse-bar/releases/download/v#{version}/cc-dailyuse-bar_#{version}_universal.dmg",
+      verified: "github.com/petems/cc-dailyuse-bar/"
+  name "CC Daily Use Bar"
+  desc "Menu bar app for monitoring Anthropic Claude Code usage"
+  homepage "https://github.com/petems/cc-dailyuse-bar"
+
+  livecheck do
+    url :url
+    strategy :github_latest
+  end
+
+  depends_on macos: ">= :monterey"
+
+  app "CC Daily Use Bar.app"
+  binary "#{appdir}/CC Daily Use Bar.app/Contents/MacOS/cc-dailyuse-bar"
+
+  uninstall launchctl: "com.cc-dailyuse-bar",
+            delete:    "~/Library/LaunchAgents/com.cc-dailyuse-bar.plist"
+
+  zap trash: [
+    "~/Library/Logs/cc-dailyuse-bar",
+    "~/Library/Application Support/cc-dailyuse-bar",
+    "~/Library/Preferences/com.cc-dailyuse-bar.plist",
+  ]
+
+  caveats <<~EOS
+    To enable autostart at login, run:
+      cc-dailyuse-bar service install
+
+    `brew uninstall --cask` removes the autostart LaunchAgent plist, so after
+    `brew upgrade --cask cc-dailyuse-bar` you'll need to re-run the install
+    command above to restore autostart.
+
+    To disable autostart manually:
+      cc-dailyuse-bar service uninstall
+  EOS
+end
