@@ -22,6 +22,8 @@ jobs:
       AC_API_KEY_ID: ${{ secrets.AC_API_KEY_ID }}
       AC_API_ISSUER_ID: ${{ secrets.AC_API_ISSUER_ID }}
       MACOS_CERTIFICATE_NAME: ${{ secrets.MACOS_CERTIFICATE_NAME }}
+      # Pin GoReleaser binary so releases are reproducible. Bump deliberately.
+      GORELEASER_VERSION: v2.15.4
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
@@ -39,10 +41,16 @@ jobs:
         id: version
         run: |
           # Apple's CFBundleShortVersionString accepts only digits and periods,
-          # so non-tag dispatch builds use a plain "0.0.0" placeholder. Real
-          # provenance for dry-runs lives in CI logs / GITHUB_SHA, not the plist.
+          # so we hard-fail on non-strict X.Y.Z tags (e.g. v1.2.3-rc1) rather
+          # than letting an invalid string into the plist. Non-tag dispatch
+          # builds use a plain "0.0.0" placeholder; real provenance for
+          # dry-runs lives in CI logs / GITHUB_SHA, not the plist.
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             VERSION="${GITHUB_REF_NAME#v}"
+            if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::Tag $GITHUB_REF_NAME does not match strict X.Y.Z format required for CFBundleShortVersionString" >&2
+              exit 1
+            fi
             IS_TAG=true
           else
             VERSION="0.0.0"
@@ -74,14 +82,14 @@ jobs:
         if: env.IS_TAG == 'true'
         uses: goreleaser/goreleaser-action@1a80836c5c9d9e5755a25cb59ec6f45a3b5f41a8 # v7
         with:
-          version: latest
+          version: ${{ env.GORELEASER_VERSION }}
           args: release --clean --skip=archive,publish
 
       - name: GoReleaser — build only (dispatch / snapshot)
         if: env.IS_TAG != 'true'
         uses: goreleaser/goreleaser-action@1a80836c5c9d9e5755a25cb59ec6f45a3b5f41a8 # v7
         with:
-          version: latest
+          version: ${{ env.GORELEASER_VERSION }}
           args: release --clean --skip=archive,publish --snapshot
 
       - name: Bundle .app from universal binary
@@ -143,7 +151,7 @@ jobs:
         if: env.IS_TAG == 'true'
         uses: goreleaser/goreleaser-action@1a80836c5c9d9e5755a25cb59ec6f45a3b5f41a8 # v7
         with:
-          version: latest
+          version: ${{ env.GORELEASER_VERSION }}
           args: release --clean=false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
