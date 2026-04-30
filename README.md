@@ -24,7 +24,32 @@ The application displays in your system tray as:
 
 ## Installation
 
-### Prerequisites
+### Install via Homebrew (macOS, recommended)
+
+```bash
+brew tap petems/tap
+brew install --cask cc-dailyuse-bar
+```
+
+The cask installs a signed and notarized `CC Daily Use Bar.app` into
+`/Applications` and exposes a `cc-dailyuse-bar` binary on your `$PATH`.
+
+To start it automatically when you log in:
+
+```bash
+cc-dailyuse-bar service install
+```
+
+To turn that off later:
+
+```bash
+cc-dailyuse-bar service uninstall
+```
+
+`cc-dailyuse-bar service status` reports whether the autostart LaunchAgent is
+loaded. Logs land in `~/Library/Logs/cc-dailyuse-bar/`.
+
+### Prerequisites for build-from-source
 
 - Go 1.21 or later
 - `ccusage` binary installed and accessible in PATH
