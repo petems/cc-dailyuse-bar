@@ -248,6 +248,35 @@ func TestUsageService_GetDailyUsage_CacheExpired(t *testing.T) {
 	}
 }
 
+// TestUsageService_GetDailyUsage_FailureStateThrottled is the regression test
+// for the throttle this PR introduced. When the cached state is a failure
+// (IsAvailable=false) and lastQuery is fresh, GetDailyUsage must serve the
+// cached failure (with an error) instead of re-running ccusage. Otherwise
+// every caller hits ccusage during an outage, defeating the throttle.
+func TestUsageService_GetDailyUsage_FailureStateThrottled(t *testing.T) {
+	service := newTestUsageService()
+
+	// Point ccusage at a path that would make every fresh call fail loudly,
+	// so if the cache is bypassed we'd see lastQuery move forward.
+	service.ccusagePath = "/non/existent/cc-shim"
+
+	// Seed a fresh cached failure state.
+	pinned := time.Now()
+	service.state.IsAvailable = false
+	service.state.Status = models.Unknown
+	service.state.DailyCount = 0
+	service.state.DailyCost = 0
+	service.lastQuery = pinned
+
+	state, err := service.GetDailyUsage()
+
+	require.Error(t, err, "cached failure should surface an error to callers")
+	assert.False(t, state.IsAvailable)
+	assert.Equal(t, models.Unknown, state.Status)
+	assert.Equal(t, pinned.UnixNano(), service.lastQuery.UnixNano(),
+		"lastQuery must not be touched: a fresh ccusage call would have updated it")
+}
+
 func TestUsageService_StartPolling_InvalidInterval(t *testing.T) {
 	service := newTestUsageService()
 
@@ -360,6 +389,65 @@ exit 1`
 
 	assert.Error(t, err)
 	assert.False(t, state.IsAvailable)
+}
+
+// TestUsageService_CommandFailureSetsUnknownState pins down the contract that
+// when ccusage exits non-zero, the cached state is fully rewritten to the
+// Unknown sentinel (not left with stale tokens/cost) and lastQuery is bumped
+// so subsequent GetDailyUsage calls within the cache window see the failure.
+func TestUsageService_CommandFailureSetsUnknownState(t *testing.T) {
+	service := newTestUsageService()
+
+	// Seed the service with stale "successful" state so we can prove the
+	// failure path zeroes it out rather than preserving it.
+	service.state.DailyCount = 999
+	service.state.DailyCost = 99.0
+	service.state.Status = models.Red
+	service.state.IsAvailable = true
+
+	tempDir := t.TempDir()
+	scriptPath := filepath.Join(tempDir, "failing-ccusage")
+	require.NoError(t, os.WriteFile(scriptPath, []byte("#!/bin/bash\nexit 1"), 0o755))
+	service.ccusagePath = scriptPath
+
+	before := time.Now()
+	state, err := service.updateWithRetry(1)
+	require.Error(t, err)
+
+	assert.False(t, state.IsAvailable)
+	assert.Equal(t, models.Unknown, state.Status)
+	assert.Equal(t, 0, state.DailyCount)
+	assert.Equal(t, 0.0, state.DailyCost)
+	assert.False(t, service.lastQuery.Before(before),
+		"lastQuery should be bumped after command failure to throttle retries")
+}
+
+// TestUsageService_NoDataForTodayNotOverwritten guards against the regression
+// where the post-failure setUnknownStateLocked could clobber the no-data-for-
+// today path. The two branches are mutually exclusive — a successful command
+// with no entry for today must still leave the state Green/IsAvailable=true.
+func TestUsageService_NoDataForTodayNotOverwritten(t *testing.T) {
+	service := newTestUsageService()
+
+	tempDir := t.TempDir()
+	scriptPath := filepath.Join(tempDir, "no-today-ccusage")
+	yesterday := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
+	resp := CCUsageResponse{Daily: []CCUsageOutput{{Date: yesterday, TotalTokens: 5, TotalCost: 0.5}}}
+	resp.Totals.TotalTokens = 5
+	resp.Totals.TotalCost = 0.5
+	jsonData, err := json.Marshal(resp)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(scriptPath,
+		[]byte("#!/bin/bash\necho '"+string(jsonData)+"'"), 0o755))
+	service.ccusagePath = scriptPath
+
+	state, err := service.updateWithRetry(1)
+	require.Error(t, err) // signals "no data for today"
+
+	assert.True(t, state.IsAvailable)
+	assert.Equal(t, models.Green, state.Status)
+	assert.Equal(t, 0, state.DailyCount)
+	assert.Equal(t, 0.0, state.DailyCost)
 }
 
 func TestUsageService_UpdateWithRetry_InvalidJSON(t *testing.T) {
