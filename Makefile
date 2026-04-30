@@ -24,7 +24,7 @@ LDFLAGS_GUI=-ldflags "$(LDFLAGS_FLAGS) -H windowsgui"
 BUILD_FLAGS=-v
 
 .PHONY: all build clean test coverage coverage-html coverage-func deps lint fmt vet help run install \
-	install-service-macos uninstall-service-macos bundle-macos
+	install-service-macos uninstall-service-macos bundle-macos dmg-macos
 
 # Default target
 all: clean deps lint test build
@@ -166,19 +166,51 @@ uninstall-service-macos:
 # macOS .app bundle variables
 APP_NAME=CC Daily Use Bar
 APP_BUNDLE=$(APP_NAME).app
+# Source binary for bundle-macos. Defaults to the locally-built BINARY_NAME so
+# `make build bundle-macos` still works; override in CI to point at the
+# goreleaser-built universal binary, e.g.
+#   make bundle-macos BINARY_PATH=dist/darwin-universal_darwin_all/cc-dailyuse-bar
+BINARY_PATH?=$(BINARY_NAME)
+# Strip a leading `v` so plist version strings ("0.1.0") don't include the tag prefix.
+BUNDLE_VERSION=$(VERSION:v%=%)
 
-# Build macOS .app bundle
+# Build macOS .app bundle. Depends on `build` so `make bundle-macos` works
+# standalone for local devs; CI overrides BINARY_PATH to point at the
+# goreleaser-built universal binary, in which case the `: build` rebuild is
+# redundant but harmless.
 bundle-macos: build
-	@echo "Verifying binary is a macOS Mach-O executable..."
-	@file $(BINARY_NAME) | grep -q Mach-O || { echo "Error: $(BINARY_NAME) is not a macOS binary. Run on macOS or cross-compile for darwin."; exit 1; }
+	@echo "Verifying binary at $(BINARY_PATH) is a macOS Mach-O executable..."
+	@file "$(BINARY_PATH)" | grep -q Mach-O || { echo "Error: $(BINARY_PATH) is not a macOS binary. Run 'make build' first or set BINARY_PATH to a darwin Mach-O."; exit 1; }
 	@echo "Creating macOS .app bundle..."
 	rm -rf "$(APP_BUNDLE)"
 	mkdir -p "$(APP_BUNDLE)/Contents/MacOS"
 	mkdir -p "$(APP_BUNDLE)/Contents/Resources"
-	cp $(BINARY_NAME) "$(APP_BUNDLE)/Contents/MacOS/"
+	cp "$(BINARY_PATH)" "$(APP_BUNDLE)/Contents/MacOS/$(BINARY_NAME)"
 	cp packaging/macos/Info.plist "$(APP_BUNDLE)/Contents/"
-	@echo "Bundle created: $(APP_BUNDLE)"
+	sed -i '' \
+	  -e 's/__CFBUNDLE_VERSION__/$(BUNDLE_VERSION)/g' \
+	  -e 's/__CFBUNDLE_SHORT_VERSION__/$(BUNDLE_VERSION)/g' \
+	  "$(APP_BUNDLE)/Contents/Info.plist"
+	@echo "Bundle created: $(APP_BUNDLE) (version=$(BUNDLE_VERSION))"
 	@echo "To sign: codesign --deep --force --options=runtime --entitlements=packaging/macos/entitlements.plist --sign 'Developer ID Application: YOUR_NAME' '$(APP_BUNDLE)'"
+
+# Build a signed-and-stapled-ready DMG from the .app bundle. Output filename
+# matches the .goreleaser.yaml release.extra_files glob.
+dmg-macos:
+	@command -v create-dmg >/dev/null 2>&1 || { echo "Error: create-dmg not found. Install with: brew install create-dmg"; exit 1; }
+	@test -d "$(APP_BUNDLE)" || { echo "Error: $(APP_BUNDLE) not found. Run 'make bundle-macos' first."; exit 1; }
+	mkdir -p dist
+	rm -f "dist/cc-dailyuse-bar_$(BUNDLE_VERSION)_universal.dmg"
+	create-dmg \
+	  --volname "CC Daily Use Bar" \
+	  --window-size 540 380 \
+	  --icon-size 96 \
+	  --icon "$(APP_BUNDLE)" 140 190 \
+	  --app-drop-link 400 190 \
+	  --hdiutil-quiet \
+	  "dist/cc-dailyuse-bar_$(BUNDLE_VERSION)_universal.dmg" \
+	  "$(APP_BUNDLE)"
+	@echo "DMG created: dist/cc-dailyuse-bar_$(BUNDLE_VERSION)_universal.dmg"
 
 # Run formatters
 format:
@@ -248,7 +280,8 @@ help:
 	@echo "  uninstall-service - Remove systemd service (Linux)"
 	@echo "  install-service-macos - Install as macOS LaunchAgent"
 	@echo "  uninstall-service-macos - Remove macOS LaunchAgent"
-	@echo "  bundle-macos   - Build macOS .app bundle"
+	@echo "  bundle-macos   - Build macOS .app bundle (override BINARY_PATH for prebuilt binaries)"
+	@echo "  dmg-macos      - Build DMG from .app bundle (requires: brew install create-dmg)"
 	@echo "  format       - Format code (fmt + lint-fix)"
 	@echo "  security     - Check for security vulnerabilities"
 	@echo "  mocks        - Generate mocks"

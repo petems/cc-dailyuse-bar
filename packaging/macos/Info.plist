@@ -12,10 +12,10 @@
     <string>com.cc-dailyuse-bar</string>
 
     <key>CFBundleVersion</key>
-    <string>0.1.0</string>
+    <string>__CFBUNDLE_VERSION__</string>
 
     <key>CFBundleShortVersionString</key>
-    <string>0.1.0</string>
+    <string>__CFBUNDLE_SHORT_VERSION__</string>
 
     <key>CFBundlePackageType</key>
     <string>APPL</string>
