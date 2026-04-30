@@ -50,7 +50,7 @@ jobs:
           echo "Releasing version: $VERSION (tag=$IS_TAG)"
 
       - name: Import Developer ID Application certificate
-        uses: apple-actions/import-codesign-certs@v3
+        uses: apple-actions/import-codesign-certs@v7
         with:
           p12-file-base64: ${{ secrets.MACOS_CERTIFICATE }}
           p12-password: ${{ secrets.MACOS_CERTIFICATE_PWD }}
@@ -69,14 +69,14 @@ jobs:
       # before any artifacts are released.
       - name: GoReleaser — build only (tag)
         if: env.IS_TAG == 'true'
-        uses: goreleaser/goreleaser-action@v6
+        uses: goreleaser/goreleaser-action@v7
         with:
           version: latest
           args: release --clean --skip=archive,publish
 
       - name: GoReleaser — build only (dispatch / snapshot)
         if: env.IS_TAG != 'true'
-        uses: goreleaser/goreleaser-action@v6
+        uses: goreleaser/goreleaser-action@v7
         with:
           version: latest
           args: release --clean --skip=archive,publish --snapshot
@@ -138,7 +138,7 @@ jobs:
       # .goreleaser.yaml picks up the signed+notarized DMG. Only run on real tags.
       - name: GoReleaser — release
         if: env.IS_TAG == 'true'
-        uses: goreleaser/goreleaser-action@v6
+        uses: goreleaser/goreleaser-action@v7
         with:
           version: latest
           args: release --clean=false
