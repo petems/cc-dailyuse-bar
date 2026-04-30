@@ -43,11 +43,14 @@ archives:
 # and pushes a hand-templated cask file to petems/homebrew-tap.
 
 release:
-  # Narrow glob so only the current run's universal DMG attaches; avoids picking
-  # up stale artifacts if dist/ was not cleaned. The release workflow also runs
-  # `goreleaser release --clean` which wipes dist/ anyway, but defense in depth.
+  # The signed+notarized+stapled DMG is staged here by the release workflow,
+  # OUTSIDE of dist/. Reason: the release pipeline runs goreleaser twice
+  # (build → external sign/notarize → release). The second pass uses
+  # `--clean` (which wipes dist/) because goreleaser refuses to start with
+  # a non-empty dist/ otherwise; if the DMG lived in dist/, --clean would
+  # delete it before extra_files could attach it.
   extra_files:
-    - glob: ./dist/cc-dailyuse-bar_*_universal.dmg
+    - glob: ./.signed-output/cc-dailyuse-bar_*_universal.dmg
 
 changelog:
   sort: asc

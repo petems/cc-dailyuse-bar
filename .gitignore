@@ -49,3 +49,7 @@ dist/
 
 # Console build target output (`make build-console`); local debugging artifact.
 cc-dailyuse-bar-console
+
+# Holding area for the signed/notarized/stapled DMG that the release workflow
+# stashes outside dist/ so the second goreleaser pass can run with --clean.
+.signed-output/
