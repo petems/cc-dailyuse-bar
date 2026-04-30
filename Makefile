@@ -186,13 +186,11 @@ bundle-macos: build
 	mkdir -p "$(APP_BUNDLE)/Contents/MacOS"
 	mkdir -p "$(APP_BUNDLE)/Contents/Resources"
 	cp "$(BINARY_PATH)" "$(APP_BUNDLE)/Contents/MacOS/$(BINARY_NAME)"
-	cp packaging/macos/Info.plist "$(APP_BUNDLE)/Contents/"
-	sed -i '' \
-	  -e 's/__CFBUNDLE_VERSION__/$(BUNDLE_VERSION)/g' \
-	  -e 's/__CFBUNDLE_SHORT_VERSION__/$(BUNDLE_VERSION)/g' \
-	  "$(APP_BUNDLE)/Contents/Info.plist"
+	sed -e 's/__CFBUNDLE_VERSION__/$(BUNDLE_VERSION)/g' \
+	    -e 's/__CFBUNDLE_SHORT_VERSION__/$(BUNDLE_VERSION)/g' \
+	    packaging/macos/Info.plist > "$(APP_BUNDLE)/Contents/Info.plist"
 	@echo "Bundle created: $(APP_BUNDLE) (version=$(BUNDLE_VERSION))"
-	@echo "To sign: codesign --deep --force --options=runtime --entitlements=packaging/macos/entitlements.plist --sign 'Developer ID Application: YOUR_NAME' '$(APP_BUNDLE)'"
+	@echo "To sign: codesign --deep --force --options=runtime --timestamp --entitlements=packaging/macos/entitlements.plist --sign 'Developer ID Application: YOUR_NAME' '$(APP_BUNDLE)'"
 
 # Build a signed-and-stapled-ready DMG from the .app bundle. Output filename
 # matches the .goreleaser.yaml release.extra_files glob.
@@ -200,7 +198,7 @@ dmg-macos:
 	@command -v create-dmg >/dev/null 2>&1 || { echo "Error: create-dmg not found. Install with: brew install create-dmg"; exit 1; }
 	@test -d "$(APP_BUNDLE)" || { echo "Error: $(APP_BUNDLE) not found. Run 'make bundle-macos' first."; exit 1; }
 	mkdir -p dist
-	rm -f "dist/cc-dailyuse-bar_$(BUNDLE_VERSION)_universal.dmg"
+	rm -f "dist/$(BINARY_NAME)_$(BUNDLE_VERSION)_universal.dmg"
 	create-dmg \
 	  --volname "CC Daily Use Bar" \
 	  --window-size 540 380 \
@@ -208,9 +206,9 @@ dmg-macos:
 	  --icon "$(APP_BUNDLE)" 140 190 \
 	  --app-drop-link 400 190 \
 	  --hdiutil-quiet \
-	  "dist/cc-dailyuse-bar_$(BUNDLE_VERSION)_universal.dmg" \
+	  "dist/$(BINARY_NAME)_$(BUNDLE_VERSION)_universal.dmg" \
 	  "$(APP_BUNDLE)"
-	@echo "DMG created: dist/cc-dailyuse-bar_$(BUNDLE_VERSION)_universal.dmg"
+	@echo "DMG created: dist/$(BINARY_NAME)_$(BUNDLE_VERSION)_universal.dmg"
 
 # Run formatters
 format:

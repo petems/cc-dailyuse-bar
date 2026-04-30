@@ -24,7 +24,7 @@ jobs:
       # collides with v6's credential persistence model and causes a duplicate
       # Authorization header on the nested fetch. Disable credential persistence
       # here so the nested checkout can attach its own auth cleanly.
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           persist-credentials: false
 
@@ -34,7 +34,7 @@ jobs:
           sudo apt install -y libayatana-appindicator3-dev pkg-config
 
       - name: Run govulncheck
-        uses: golang/govulncheck-action@v1
+        uses: golang/govulncheck-action@b625fbe08f3bccbe446d94fbf87fcc875a4f50ee # v1
         with:
           go-version-input: '1.25.x'
           check-latest: true

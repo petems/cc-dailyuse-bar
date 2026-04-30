@@ -23,11 +23,11 @@ jobs:
       AC_API_ISSUER_ID: ${{ secrets.AC_API_ISSUER_ID }}
       MACOS_CERTIFICATE_NAME: ${{ secrets.MACOS_CERTIFICATE_NAME }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           fetch-depth: 0  # goreleaser needs full history for changelog
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
         with:
           go-version-file: go.mod
           cache: true
@@ -38,11 +38,14 @@ jobs:
       - name: Compute version
         id: version
         run: |
+          # Apple's CFBundleShortVersionString accepts only digits and periods,
+          # so non-tag dispatch builds use a plain "0.0.0" placeholder. Real
+          # provenance for dry-runs lives in CI logs / GITHUB_SHA, not the plist.
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             VERSION="${GITHUB_REF_NAME#v}"
             IS_TAG=true
           else
-            VERSION="0.0.0-${GITHUB_SHA:0:7}"
+            VERSION="0.0.0"
             IS_TAG=false
           fi
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
@@ -50,7 +53,7 @@ jobs:
           echo "Releasing version: $VERSION (tag=$IS_TAG)"
 
       - name: Import Developer ID Application certificate
-        uses: apple-actions/import-codesign-certs@v7
+        uses: apple-actions/import-codesign-certs@5142e029c445c10ffc7149d172e540235a065466 # v7
         with:
           p12-file-base64: ${{ secrets.MACOS_CERTIFICATE }}
           p12-password: ${{ secrets.MACOS_CERTIFICATE_PWD }}
@@ -69,14 +72,14 @@ jobs:
       # before any artifacts are released.
       - name: GoReleaser — build only (tag)
         if: env.IS_TAG == 'true'
-        uses: goreleaser/goreleaser-action@v7
+        uses: goreleaser/goreleaser-action@1a80836c5c9d9e5755a25cb59ec6f45a3b5f41a8 # v7
         with:
           version: latest
           args: release --clean --skip=archive,publish
 
       - name: GoReleaser — build only (dispatch / snapshot)
         if: env.IS_TAG != 'true'
-        uses: goreleaser/goreleaser-action@v7
+        uses: goreleaser/goreleaser-action@1a80836c5c9d9e5755a25cb59ec6f45a3b5f41a8 # v7
         with:
           version: latest
           args: release --clean --skip=archive,publish --snapshot
@@ -138,7 +141,7 @@ jobs:
       # .goreleaser.yaml picks up the signed+notarized DMG. Only run on real tags.
       - name: GoReleaser — release
         if: env.IS_TAG == 'true'
-        uses: goreleaser/goreleaser-action@v7
+        uses: goreleaser/goreleaser-action@1a80836c5c9d9e5755a25cb59ec6f45a3b5f41a8 # v7
         with:
           version: latest
           args: release --clean=false
@@ -149,7 +152,7 @@ jobs:
       # manually inspected without a tag/release.
       - name: Upload dry-run artifacts
         if: env.IS_TAG != 'true'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: macos-release-dryrun
           path: |
