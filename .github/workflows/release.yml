@@ -203,7 +203,18 @@ jobs:
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
         run: |
           set -euo pipefail
-          DMG=$(ls .signed-output/cc-dailyuse-bar_*_universal.dmg)
+
+          # Assert exactly one signed DMG before hashing — guards against a
+          # stale or duplicated artifact silently producing a wrong checksum.
+          shopt -s nullglob
+          dmgs=(.signed-output/cc-dailyuse-bar_*_universal.dmg)
+          shopt -u nullglob
+          if [[ ${#dmgs[@]} -ne 1 ]]; then
+            echo "::error::Expected exactly 1 signed DMG in .signed-output/, found ${#dmgs[@]}" >&2
+            ls -la .signed-output/ >&2 || true
+            exit 1
+          fi
+          DMG="${dmgs[0]}"
           SHA256=$(shasum -a 256 "$DMG" | awk '{print $1}')
           echo "Cask version=${VERSION} sha256=${SHA256}"
 
