@@ -145,14 +145,14 @@ jobs:
           spctl --assess --type open --context context:primary-signature -vv "$DMG"
           xcrun stapler validate "$DMG"
 
-      # Drop the .p8 + signing keychain as soon as verification passes so later
+      # Drop the App Store Connect .p8 as soon as verification passes so later
       # steps (goreleaser publish, artifact upload, future cask push) can't
-      # inherit secrets they don't need. The trailing `if: always()` cleanup
-      # below covers failure paths where this step never runs.
+      # read it. The signing keychain itself is owned by
+      # apple-actions/import-codesign-certs — its post-action hook deletes the
+      # keychain at job-end, so we deliberately don't touch it here (early
+      # delete here would race the post-hook and fail it with exit code 50).
       - name: Cleanup signing material (early)
-        run: |
-          rm -f "$AC_API_KEY_PATH"
-          security delete-keychain signing_temp.keychain
+        run: rm -f "$AC_API_KEY_PATH"
 
       # Second goreleaser pass: archive + GitHub release. release.extra_files in
       # .goreleaser.yaml picks up the signed+notarized DMG. Only run on real tags.
@@ -181,11 +181,9 @@ jobs:
       # signed DMG flow is verified end-to-end. See comment block at
       # .goreleaser.yaml:39-43 for context. Requires HOMEBREW_TAP_TOKEN secret.
 
-      # Fallback cleanup for failure paths where the early cleanup never ran.
-      # `|| true` is intentional here so this step doesn't mask the real
-      # failure when the keychain / .p8 are already gone.
+      # Fallback for failure paths where the early cleanup never ran.
+      # The signing keychain is cleaned by apple-actions/import-codesign-certs'
+      # own post-action hook, so we only need to cover the .p8 here.
       - name: Cleanup signing material (fallback)
         if: always()
-        run: |
-          rm -f "$AC_API_KEY_PATH" || true
-          security delete-keychain signing_temp.keychain || true
+        run: rm -f "$AC_API_KEY_PATH" || true
