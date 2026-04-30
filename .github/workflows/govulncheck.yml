@@ -18,7 +18,7 @@ concurrency:
 jobs:
   govulncheck:
     name: govulncheck
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       # govulncheck-action@v1 internally runs actions/checkout@v4.1.1, which
       # collides with v6's credential persistence model and causes a duplicate
