@@ -189,9 +189,48 @@ jobs:
             dist/cc-dailyuse-bar_*_universal.dmg
           if-no-files-found: error
 
-      # TODO: push a hand-templated cask file to petems/homebrew-tap once the
-      # signed DMG flow is verified end-to-end. See comment block at
-      # .goreleaser.yaml:39-43 for context. Requires HOMEBREW_TAP_TOKEN secret.
+      # Push a sed-templated Homebrew cask file to petems/homebrew-tap. Only
+      # runs on real tag pushes. The signed/notarized/stapled DMG lives in
+      # .signed-output/ (see "Stash signed DMG outside dist/" step). The
+      # template at packaging/homebrew/cc-dailyuse-bar.rb.tmpl uses __VERSION__
+      # and __SHA256__ placeholders. Why we don't use goreleaser's
+      # `homebrew_casks` block: see comment at .goreleaser.yaml:39-43.
+      # Requires HOMEBREW_TAP_TOKEN — fine-grained PAT with Contents:write
+      # on petems/homebrew-tap.
+      - name: Push cask to petems/homebrew-tap
+        if: env.IS_TAG == 'true'
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          set -euo pipefail
+          DMG=$(ls .signed-output/cc-dailyuse-bar_*_universal.dmg)
+          SHA256=$(shasum -a 256 "$DMG" | awk '{print $1}')
+          echo "Cask version=${VERSION} sha256=${SHA256}"
+
+          TAPDIR="$RUNNER_TEMP/homebrew-tap"
+          git clone --depth=1 \
+            "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/petems/homebrew-tap.git" \
+            "$TAPDIR"
+
+          mkdir -p "$TAPDIR/Casks"
+          sed -e "s|__VERSION__|${VERSION}|g" \
+              -e "s|__SHA256__|${SHA256}|g" \
+              packaging/homebrew/cc-dailyuse-bar.rb.tmpl \
+            > "$TAPDIR/Casks/cc-dailyuse-bar.rb"
+
+          cd "$TAPDIR"
+          git config user.email "actions@github.com"
+          git config user.name  "github-actions[bot]"
+          git add Casks/cc-dailyuse-bar.rb
+
+          # Idempotent: if the cask already matches (e.g. a release retry),
+          # don't create an empty commit.
+          if git diff --staged --quiet; then
+            echo "Cask file unchanged; nothing to push."
+          else
+            git commit -m "cc-dailyuse-bar ${VERSION}"
+            git push origin HEAD:master
+          fi
 
       # Always-run final .p8 cleanup. No-op on the success path (the early
       # step already removed the file); covers failure paths where the early
