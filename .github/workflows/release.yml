@@ -145,6 +145,15 @@ jobs:
           spctl --assess --type open --context context:primary-signature -vv "$DMG"
           xcrun stapler validate "$DMG"
 
+      # Stash the signed/notarized/stapled DMG outside dist/ so the second
+      # goreleaser pass can use --clean (which wipes dist/) without losing it.
+      # extra_files in .goreleaser.yaml is configured to pick it up from here.
+      - name: Stash signed DMG outside dist/
+        run: |
+          mkdir -p .signed-output
+          cp dist/cc-dailyuse-bar_*_universal.dmg .signed-output/
+          ls -la .signed-output/
+
       # Drop the App Store Connect .p8 as soon as verification passes so later
       # steps (goreleaser publish, artifact upload, future cask push) can't
       # read it. The signing keychain itself is owned by
@@ -154,14 +163,17 @@ jobs:
       - name: Cleanup signing material (early)
         run: rm -f "$AC_API_KEY_PATH"
 
-      # Second goreleaser pass: archive + GitHub release. release.extra_files in
-      # .goreleaser.yaml picks up the signed+notarized DMG. Only run on real tags.
+      # Second goreleaser pass: archive + GitHub release. Uses --clean because
+      # goreleaser refuses to start with a non-empty dist/. This wipes the
+      # universal binary the first pass built (rebuilt here, ~30s extra) but
+      # the signed DMG is safe in .signed-output/ and gets attached via
+      # extra_files. Only run on real tags.
       - name: GoReleaser — release
         if: env.IS_TAG == 'true'
         uses: goreleaser/goreleaser-action@1a80836c5c9d9e5755a25cb59ec6f45a3b5f41a8 # v7
         with:
           version: ${{ env.GORELEASER_VERSION }}
-          args: release --clean=false
+          args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
