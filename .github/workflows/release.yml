@@ -1,0 +1,191 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build, sign, notarize, release
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      AC_API_KEY_ID: ${{ secrets.AC_API_KEY_ID }}
+      AC_API_ISSUER_ID: ${{ secrets.AC_API_ISSUER_ID }}
+      MACOS_CERTIFICATE_NAME: ${{ secrets.MACOS_CERTIFICATE_NAME }}
+      # Pin GoReleaser binary so releases are reproducible. Bump deliberately.
+      GORELEASER_VERSION: v2.15.4
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0  # goreleaser needs full history for changelog
+
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install create-dmg
+        run: brew install create-dmg
+
+      - name: Compute version
+        id: version
+        run: |
+          # Apple's CFBundleShortVersionString accepts only digits and periods,
+          # so we hard-fail on non-strict X.Y.Z tags (e.g. v1.2.3-rc1) rather
+          # than letting an invalid string into the plist. Non-tag dispatch
+          # builds use a plain "0.0.0" placeholder; real provenance for
+          # dry-runs lives in CI logs / GITHUB_SHA, not the plist.
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+            if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::Tag $GITHUB_REF_NAME does not match strict X.Y.Z format required for CFBundleShortVersionString" >&2
+              exit 1
+            fi
+            IS_TAG=true
+          else
+            VERSION="0.0.0"
+            IS_TAG=false
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "IS_TAG=$IS_TAG" >> "$GITHUB_ENV"
+          echo "Releasing version: $VERSION (tag=$IS_TAG)"
+
+      - name: Import Developer ID Application certificate
+        uses: apple-actions/import-codesign-certs@5142e029c445c10ffc7149d172e540235a065466 # v7
+        with:
+          p12-file-base64: ${{ secrets.MACOS_CERTIFICATE }}
+          p12-password: ${{ secrets.MACOS_CERTIFICATE_PWD }}
+
+      - name: Write App Store Connect API key
+        env:
+          AC_API_KEY_B64: ${{ secrets.AC_API_KEY }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/keys"
+          echo "$AC_API_KEY_B64" | base64 --decode > "$RUNNER_TEMP/keys/AuthKey.p8"
+          chmod 600 "$RUNNER_TEMP/keys/AuthKey.p8"
+          echo "AC_API_KEY_PATH=$RUNNER_TEMP/keys/AuthKey.p8" >> "$GITHUB_ENV"
+
+      # First goreleaser pass: build per-arch binaries + lipo into a universal
+      # Mach-O. Skip archive/publish so we can sign + notarize the .app bundle
+      # before any artifacts are released.
+      - name: GoReleaser — build only (tag)
+        if: env.IS_TAG == 'true'
+        uses: goreleaser/goreleaser-action@1a80836c5c9d9e5755a25cb59ec6f45a3b5f41a8 # v7
+        with:
+          version: ${{ env.GORELEASER_VERSION }}
+          args: release --clean --skip=archive,publish
+
+      - name: GoReleaser — build only (dispatch / snapshot)
+        if: env.IS_TAG != 'true'
+        uses: goreleaser/goreleaser-action@1a80836c5c9d9e5755a25cb59ec6f45a3b5f41a8 # v7
+        with:
+          version: ${{ env.GORELEASER_VERSION }}
+          args: release --clean --skip=archive,publish --snapshot
+
+      - name: Bundle .app from universal binary
+        run: |
+          UNIVERSAL_BIN=$(find dist -type f -name cc-dailyuse-bar -path '*universal*' | head -1)
+          if [[ -z "$UNIVERSAL_BIN" ]]; then
+            echo "Could not locate universal binary under dist/" >&2
+            find dist -type f -name cc-dailyuse-bar >&2
+            exit 1
+          fi
+          echo "Bundling from $UNIVERSAL_BIN"
+          make bundle-macos BINARY_PATH="$UNIVERSAL_BIN" VERSION="$VERSION"
+
+      - name: Codesign .app
+        run: |
+          codesign --force --deep --options=runtime --timestamp \
+            --entitlements packaging/macos/entitlements.plist \
+            --sign "$MACOS_CERTIFICATE_NAME" \
+            "CC Daily Use Bar.app"
+          codesign --verify --deep --strict --verbose=2 "CC Daily Use Bar.app"
+
+      - name: Notarize + staple .app
+        run: |
+          ditto -c -k --keepParent "CC Daily Use Bar.app" "CC Daily Use Bar.zip"
+          xcrun notarytool submit "CC Daily Use Bar.zip" \
+            --key "$AC_API_KEY_PATH" \
+            --key-id "$AC_API_KEY_ID" \
+            --issuer "$AC_API_ISSUER_ID" \
+            --wait
+          xcrun stapler staple "CC Daily Use Bar.app"
+          rm "CC Daily Use Bar.zip"
+
+      - name: Build DMG
+        run: make dmg-macos VERSION="$VERSION"
+
+      - name: Codesign + notarize + staple DMG
+        run: |
+          DMG=$(ls dist/cc-dailyuse-bar_*_universal.dmg)
+          codesign --force --timestamp --sign "$MACOS_CERTIFICATE_NAME" "$DMG"
+          xcrun notarytool submit "$DMG" \
+            --key "$AC_API_KEY_PATH" \
+            --key-id "$AC_API_KEY_ID" \
+            --issuer "$AC_API_ISSUER_ID" \
+            --wait
+          xcrun stapler staple "$DMG"
+
+      - name: Verify signing + notarization
+        run: |
+          codesign --verify --deep --strict --verbose=2 "CC Daily Use Bar.app"
+          spctl --assess --type exec --verbose=2 "CC Daily Use Bar.app"
+          xcrun stapler validate "CC Daily Use Bar.app"
+          DMG=$(ls dist/cc-dailyuse-bar_*_universal.dmg)
+          spctl --assess --type open --context context:primary-signature -vv "$DMG"
+          xcrun stapler validate "$DMG"
+
+      # Drop the .p8 + signing keychain as soon as verification passes so later
+      # steps (goreleaser publish, artifact upload, future cask push) can't
+      # inherit secrets they don't need. The trailing `if: always()` cleanup
+      # below covers failure paths where this step never runs.
+      - name: Cleanup signing material (early)
+        run: |
+          rm -f "$AC_API_KEY_PATH"
+          security delete-keychain signing_temp.keychain
+
+      # Second goreleaser pass: archive + GitHub release. release.extra_files in
+      # .goreleaser.yaml picks up the signed+notarized DMG. Only run on real tags.
+      - name: GoReleaser — release
+        if: env.IS_TAG == 'true'
+        uses: goreleaser/goreleaser-action@1a80836c5c9d9e5755a25cb59ec6f45a3b5f41a8 # v7
+        with:
+          version: ${{ env.GORELEASER_VERSION }}
+          args: release --clean=false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Surface the artifacts on workflow_dispatch dry-runs so they can be
+      # manually inspected without a tag/release.
+      - name: Upload dry-run artifacts
+        if: env.IS_TAG != 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: macos-release-dryrun
+          path: |
+            CC Daily Use Bar.app
+            dist/cc-dailyuse-bar_*_universal.dmg
+          if-no-files-found: error
+
+      # TODO: push a hand-templated cask file to petems/homebrew-tap once the
+      # signed DMG flow is verified end-to-end. See comment block at
+      # .goreleaser.yaml:39-43 for context. Requires HOMEBREW_TAP_TOKEN secret.
+
+      # Fallback cleanup for failure paths where the early cleanup never ran.
+      # `|| true` is intentional here so this step doesn't mask the real
+      # failure when the keychain / .p8 are already gone.
+      - name: Cleanup signing material (fallback)
+        if: always()
+        run: |
+          rm -f "$AC_API_KEY_PATH" || true
+          security delete-keychain signing_temp.keychain || true
