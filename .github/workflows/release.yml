@@ -9,7 +9,12 @@ permissions:
   contents: write
 
 concurrency:
-  group: release-${{ github.ref }}
+  # Serialize ALL release runs (across tags + workflow_dispatch). The cask push
+  # step writes to a shared branch on petems/homebrew-tap, so two tags running
+  # in parallel could race and produce non-fast-forward push failures or stale
+  # cask updates. Constant group name + cancel-in-progress: false makes
+  # subsequent runs queue and wait their turn.
+  group: release-publish
   cancel-in-progress: false
 
 jobs:
