@@ -41,3 +41,11 @@ cc-dailyuse-bar_unix
 # Must be ignored or `goreleaser release` fails with "git is in a dirty state"
 # because the release workflow stages signed/notarized artifacts here.
 dist/
+
+# ZIP of the .app produced by SIGNING.md's manual notarization steps. The CI
+# workflow `rm`s it in the same step, but a local notarize run would leave it
+# behind and trip the dirty-tree check on a subsequent goreleaser invocation.
+*.zip
+
+# Console build target output (`make build-console`); local debugging artifact.
+cc-dailyuse-bar-console
