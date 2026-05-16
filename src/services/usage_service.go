@@ -33,6 +33,7 @@ type UsageService struct {
 	cmdTimeout      time.Duration
 	yellowThreshold float64
 	redThreshold    float64
+	fallbackLogOnce sync.Once
 }
 
 // NewUsageService creates a new UsageService instance
@@ -156,25 +157,39 @@ func (us *UsageService) IsAvailable() bool {
 		return false
 	}
 
-	// Resolve via exec.LookPath first so the availability check follows the
-	// same rules as exec.CommandContext (PATH-only for bare names, never the
-	// cwd). Otherwise IsAvailable could return true for a file in the working
-	// directory that exec would later fail to find.
-	resolvedPath, err := exec.LookPath(us.ccusagePath)
+	// ResolveCCUsagePath mirrors exec.CommandContext's PATH-only lookup for
+	// bare names and adds a macOS Homebrew fallback so .app bundles launched
+	// from /Applications (with a stripped PATH) can still find ccusage.
+	resolvedPath, fallback, err := ResolveCCUsagePath(us.ccusagePath)
 	if err != nil {
 		return false
 	}
 
 	info, err := os.Stat(resolvedPath)
-	if err != nil {
+	if err != nil || info.IsDir() {
+		return false
+	}
+	if info.Mode()&0o111 == 0 {
 		return false
 	}
 
-	if info.IsDir() {
-		return false
+	if fallback {
+		us.logFallbackOnce(resolvedPath)
 	}
+	return true
+}
 
-	return info.Mode()&0o111 != 0
+// logFallbackOnce surfaces a one-shot warning when ResolveCCUsagePath had to
+// fall back to a Homebrew dir because PATH lookup failed. Helps users notice
+// the .app-bundle PATH issue and pin ccusage_path to an absolute location.
+func (us *UsageService) logFallbackOnce(resolvedPath string) {
+	us.fallbackLogOnce.Do(func() {
+		us.logger.Warn("ccusage not found on PATH; resolved via Homebrew fallback. Set ccusage_path to an absolute path in config to silence this.",
+			map[string]interface{}{
+				"configured": us.ccusagePath,
+				"resolved":   resolvedPath,
+			})
+	})
 }
 
 // SetCCUsagePath updates the path to ccusage binary
@@ -332,10 +347,18 @@ func (us *UsageService) performUpdateLocked(maxRetries int) (*models.UsageState,
 }
 
 func (us *UsageService) executeCCUsage() ([]byte, error) {
+	// Use the resolved path so the macOS Homebrew fallback applies here too —
+	// otherwise exec.CommandContext re-runs PATH lookup and fails for bare
+	// names under launchd / LaunchServices' stripped PATH.
+	resolvedPath, _, resolveErr := ResolveCCUsagePath(us.ccusagePath)
+	if resolveErr != nil {
+		return nil, fmt.Errorf("ccusage path %q could not be resolved: %w", us.ccusagePath, resolveErr)
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), us.cmdTimeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, us.ccusagePath, "daily", "--json")
+	cmd := exec.CommandContext(ctx, resolvedPath, "daily", "--json")
 	output, err := cmd.Output()
 	if err != nil {
 		// When the context deadline fires, Go kills the child with SIGKILL and

@@ -57,6 +57,20 @@ This is the default mode if no command is specified.`,
 			return runAsDaemon(cmd)
 		}
 
+		// Redirect stderr/stdout into a known log file before any service is
+		// constructed — otherwise loggers cache the os.Stderr writer and the
+		// file redirect has no effect on them. Failures here are non-fatal:
+		// the app still works, just without persistent logs.
+		if logPath, err := setupAppLogFile(); err != nil {
+			logger.Warn("Failed to set up app log file; logs may not be captured", map[string]interface{}{
+				"error": err.Error(),
+			})
+		} else if logPath != "" {
+			logger.Info("App log file initialized", map[string]interface{}{
+				"path": logPath,
+			})
+		}
+
 		return runTrayApp(cmd, config)
 	},
 }
