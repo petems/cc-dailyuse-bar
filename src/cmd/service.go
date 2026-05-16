@@ -30,8 +30,8 @@ var execLaunchctl = func(args ...string) ([]byte, error) {
 }
 
 var (
-	serviceBinPath    string
-	servicePurgeLogs  bool
+	serviceBinPath   string
+	servicePurgeLogs bool
 )
 
 var serviceCmd = &cobra.Command{
@@ -135,17 +135,17 @@ func runServiceInstall(cmd *cobra.Command, binOverride string) error {
 	plistPath := launchAgentPath(home)
 	logs := logsDir(home)
 
-	if err := os.MkdirAll(filepath.Dir(plistPath), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(plistPath), 0o750); err != nil {
 		return lib.WrapError(err, lib.ErrCodeSystem, "failed to create LaunchAgents directory")
 	}
-	if err := os.MkdirAll(logs, 0o755); err != nil {
+	if err := os.MkdirAll(logs, 0o750); err != nil {
 		return lib.WrapError(err, lib.ErrCodeSystem, "failed to create logs directory")
 	}
 
 	rendered := renderLaunchAgent(home, binPath)
 
 	tmp := plistPath + ".tmp"
-	if err := os.WriteFile(tmp, []byte(rendered), 0o644); err != nil {
+	if err := os.WriteFile(tmp, []byte(rendered), 0o600); err != nil {
 		return lib.WrapError(err, lib.ErrCodeSystem, "failed to write plist tempfile")
 	}
 	if err := os.Rename(tmp, plistPath); err != nil {
@@ -207,11 +207,11 @@ func runServiceStatus(cmd *cobra.Command) error {
 	plistPath := launchAgentPath(home)
 	w := cmd.OutOrStdout()
 
-	if _, err := os.Stat(plistPath); os.IsNotExist(err) {
+	if _, statErr := os.Stat(plistPath); os.IsNotExist(statErr) {
 		fmt.Fprintf(w, "Not installed (no plist at %s)\n", plistPath)
 		return nil
-	} else if err != nil {
-		return lib.WrapError(err, lib.ErrCodeSystem, "failed to stat plist")
+	} else if statErr != nil {
+		return lib.WrapError(statErr, lib.ErrCodeSystem, "failed to stat plist")
 	}
 
 	out, err := execLaunchctl("list", launchAgentLabel)

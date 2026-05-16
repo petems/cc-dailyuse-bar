@@ -93,7 +93,7 @@ func TestRunServiceInstall_WritesPlistAndCallsLaunchctl(t *testing.T) {
 	require.NoError(t, err)
 
 	plistPath := filepath.Join(home, "Library", "LaunchAgents", "com.cc-dailyuse-bar.plist")
-	body, err := os.ReadFile(plistPath)
+	body, err := os.ReadFile(plistPath) //nolint:gosec // plistPath is a t.TempDir()-derived test path
 	require.NoError(t, err)
 	assert.Contains(t, string(body), "/path/to/cc-dailyuse-bar")
 	assert.Contains(t, string(body), home+"/Library/Logs/cc-dailyuse-bar/stdout.log")
@@ -127,7 +127,7 @@ func TestRunServiceInstall_IsIdempotent(t *testing.T) {
 	require.NoError(t, runServiceInstall(cmd, "/bin1"))
 	require.NoError(t, runServiceInstall(cmd, "/bin2"), "second install should not error")
 
-	body, err := os.ReadFile(filepath.Join(home, "Library", "LaunchAgents", "com.cc-dailyuse-bar.plist"))
+	body, err := os.ReadFile(filepath.Join(home, "Library", "LaunchAgents", "com.cc-dailyuse-bar.plist")) //nolint:gosec // path is a t.TempDir()-derived test path
 	require.NoError(t, err)
 	assert.Contains(t, string(body), "/bin2", "second install should overwrite the first")
 }
@@ -137,13 +137,13 @@ func TestRunServiceUninstall_RemovesPlistAndKeepsLogs(t *testing.T) {
 	t.Setenv("HOME", home)
 
 	plistPath := filepath.Join(home, "Library", "LaunchAgents", "com.cc-dailyuse-bar.plist")
-	require.NoError(t, os.MkdirAll(filepath.Dir(plistPath), 0o755))
-	require.NoError(t, os.WriteFile(plistPath, []byte("seed"), 0o644))
+	require.NoError(t, os.MkdirAll(filepath.Dir(plistPath), 0o750))
+	require.NoError(t, os.WriteFile(plistPath, []byte("seed"), 0o600))
 
 	logs := filepath.Join(home, "Library", "Logs", "cc-dailyuse-bar")
-	require.NoError(t, os.MkdirAll(logs, 0o755))
+	require.NoError(t, os.MkdirAll(logs, 0o750))
 	logFile := filepath.Join(logs, "stdout.log")
-	require.NoError(t, os.WriteFile(logFile, []byte("hi"), 0o644))
+	require.NoError(t, os.WriteFile(logFile, []byte("hi"), 0o600))
 
 	var calls [][]string
 	prev := execLaunchctl
@@ -174,8 +174,8 @@ func TestRunServiceUninstall_PurgeLogs(t *testing.T) {
 	t.Setenv("HOME", home)
 
 	logs := filepath.Join(home, "Library", "Logs", "cc-dailyuse-bar")
-	require.NoError(t, os.MkdirAll(logs, 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(logs, "stdout.log"), []byte("hi"), 0o644))
+	require.NoError(t, os.MkdirAll(logs, 0o750))
+	require.NoError(t, os.WriteFile(filepath.Join(logs, "stdout.log"), []byte("hi"), 0o600))
 
 	prev := execLaunchctl
 	execLaunchctl = func(args ...string) ([]byte, error) { return nil, nil }
@@ -225,8 +225,8 @@ func TestRunServiceStatus_LoadedReportsLaunchctlOutput(t *testing.T) {
 	t.Setenv("HOME", home)
 
 	plistPath := filepath.Join(home, "Library", "LaunchAgents", "com.cc-dailyuse-bar.plist")
-	require.NoError(t, os.MkdirAll(filepath.Dir(plistPath), 0o755))
-	require.NoError(t, os.WriteFile(plistPath, []byte("seed"), 0o644))
+	require.NoError(t, os.MkdirAll(filepath.Dir(plistPath), 0o750))
+	require.NoError(t, os.WriteFile(plistPath, []byte("seed"), 0o600))
 
 	prev := execLaunchctl
 	execLaunchctl = func(args ...string) ([]byte, error) {
