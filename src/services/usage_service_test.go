@@ -277,6 +277,37 @@ func TestUsageService_GetDailyUsage_FailureStateThrottled(t *testing.T) {
 		"lastQuery must not be touched: a fresh ccusage call would have updated it")
 }
 
+// TestUsageService_GetDailyUsage_FailureCausePreserved verifies that the
+// cached failure path surfaces the real wrapped cause (parse error, command
+// exit, etc.) rather than collapsing every failure into a generic
+// "unavailable" error. Without this, callers and logs lose the root cause
+// for the duration of the throttle window.
+func TestUsageService_GetDailyUsage_FailureCausePreserved(t *testing.T) {
+	service := newTestUsageService()
+
+	tempDir := t.TempDir()
+	scriptPath := filepath.Join(tempDir, "invalid-json-ccusage")
+	require.NoError(t, os.WriteFile(scriptPath, []byte("#!/bin/bash\necho 'not valid json'"), 0o755))
+	service.ccusagePath = scriptPath
+
+	// Drive a real failure through performUpdateLocked so lastErr is populated
+	// with the wrapped parse error.
+	_, firstErr := service.updateWithRetry(1)
+	require.Error(t, firstErr)
+	require.Contains(t, firstErr.Error(), "failed to parse ccusage JSON output")
+
+	// Now hit the cache and confirm the same wrapped cause comes back, not
+	// the synthesized "serving cached ccusage failure state" message.
+	state, cachedErr := service.GetDailyUsage()
+	require.Error(t, cachedErr)
+	assert.False(t, state.IsAvailable)
+	assert.Equal(t, models.Unknown, state.Status)
+	assert.Contains(t, cachedErr.Error(), "failed to parse ccusage JSON output",
+		"cached error must preserve the original cause")
+	assert.NotContains(t, cachedErr.Error(), "serving cached ccusage failure state",
+		"cached error must not collapse to the generic unavailable message")
+}
+
 func TestUsageService_StartPolling_InvalidInterval(t *testing.T) {
 	service := newTestUsageService()
 
