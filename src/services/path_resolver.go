@@ -1,12 +1,13 @@
 package services
 
 import (
-	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"cc-dailyuse-bar/src/lib"
 )
 
 // homebrewFallbackDirs lists Homebrew install locations searched on macOS when
@@ -25,7 +26,7 @@ var homebrewFallbackDirs = []string{
 // The fallback flag is true when LookPath failed and a Homebrew dir matched.
 func ResolveCCUsagePath(configured string) (resolved string, fallback bool, err error) {
 	if configured == "" {
-		return "", false, errors.New("ccusage path is empty")
+		return "", false, lib.ValidationError("ccusage path is empty")
 	}
 
 	if p, lookErr := exec.LookPath(configured); lookErr == nil {
@@ -37,9 +38,9 @@ func ResolveCCUsagePath(configured string) (resolved string, fallback bool, err 
 				return candidate, true, nil
 			}
 		}
-		return "", false, lookErr
+		return "", false, lib.WrapError(lookErr, lib.ErrCodeCCUsage, "ccusage not found on PATH or Homebrew fallback dirs")
 	} else {
-		return "", false, lookErr
+		return "", false, lib.WrapError(lookErr, lib.ErrCodeCCUsage, "ccusage not found on PATH")
 	}
 }
 

@@ -39,7 +39,7 @@ var doctorCmd = &cobra.Command{
 		// PATH while doctor (run from a shell) reports everything fine.
 		path, fallback, err := services.ResolveCCUsagePath(config.CCUsagePath)
 		if err != nil {
-			return fmt.Errorf("binary: 'ccusage' not found at %q; install ccusage or set 'ccusage_path' to an absolute path in config", config.CCUsagePath)
+			return fmt.Errorf("binary: 'ccusage' not found at %q; install ccusage or set 'ccusage_path' to an absolute path in config: %w", config.CCUsagePath, err)
 		}
 
 		// On non-Windows, verify the file is executable via permission bits.

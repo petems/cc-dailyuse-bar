@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"os/exec"
 	"sync"
 	"time"
@@ -160,16 +159,12 @@ func (us *UsageService) IsAvailable() bool {
 	// ResolveCCUsagePath mirrors exec.CommandContext's PATH-only lookup for
 	// bare names and adds a macOS Homebrew fallback so .app bundles launched
 	// from /Applications (with a stripped PATH) can still find ccusage.
+	// Both lookup paths (exec.LookPath and isExecutableFile) already verify
+	// the result is an executable regular file, so we trust the resolver and
+	// skip a redundant Stat — that redundant check used POSIX mode bits and
+	// would incorrectly mark valid .exe files as unavailable on Windows.
 	resolvedPath, fallback, err := ResolveCCUsagePath(us.ccusagePath)
 	if err != nil {
-		return false
-	}
-
-	info, err := os.Stat(resolvedPath)
-	if err != nil || info.IsDir() {
-		return false
-	}
-	if info.Mode()&0o111 == 0 {
 		return false
 	}
 
@@ -352,7 +347,8 @@ func (us *UsageService) executeCCUsage() ([]byte, error) {
 	// names under launchd / LaunchServices' stripped PATH.
 	resolvedPath, _, resolveErr := ResolveCCUsagePath(us.ccusagePath)
 	if resolveErr != nil {
-		return nil, fmt.Errorf("ccusage path %q could not be resolved: %w", us.ccusagePath, resolveErr)
+		return nil, lib.WrapError(resolveErr, lib.ErrCodeCCUsage,
+			fmt.Sprintf("ccusage path %q could not be resolved", us.ccusagePath))
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), us.cmdTimeout)

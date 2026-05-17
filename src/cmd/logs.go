@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+
+	"cc-dailyuse-bar/src/lib"
 )
 
 var (
@@ -31,7 +33,7 @@ and by the .app bundle itself (since it now redirects its own stderr).`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		path := appLogPath()
 		if path == "" {
-			return errors.New("logs: application log file is only available on macOS")
+			return lib.NewError(lib.ErrCodeSystem, "logs: application log file is only available on macOS")
 		}
 
 		out := cmd.OutOrStdout()
@@ -41,7 +43,7 @@ and by the .app bundle itself (since it now redirects its own stderr).`,
 			fmt.Fprintln(out, "The log is created the first time the app runs (either via the menu bar or 'cc-dailyuse-bar service install').")
 			return nil
 		} else if err != nil {
-			return fmt.Errorf("logs: stat %q: %w", path, err)
+			return lib.WrapError(err, lib.ErrCodeSystem, fmt.Sprintf("logs: stat %q", path))
 		}
 
 		if err := printTail(out, path, logsTailLines); err != nil {
@@ -64,9 +66,10 @@ func init() {
 // printTail writes the last n lines of path to w. n <= 0 means "everything".
 // Reads the whole file; fine for the log sizes this app produces.
 func printTail(w io.Writer, path string, n int) error {
+	// #nosec G304 -- path comes from appLogPath() (UserHomeDir + fixed app subpath), not user input
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return fmt.Errorf("logs: read %q: %w", path, err)
+		return lib.WrapError(err, lib.ErrCodeSystem, fmt.Sprintf("logs: read %q", path))
 	}
 	if len(data) == 0 {
 		return nil
@@ -94,14 +97,15 @@ func printTail(w io.Writer, path string, n int) error {
 // when ctx is cancelled (e.g. SIGINT via cobra's context). Doesn't handle
 // rotation — the log file is append-only in this app.
 func followFile(ctx context.Context, w io.Writer, path string) error {
+	// #nosec G304 -- path comes from appLogPath() (UserHomeDir + fixed app subpath), not user input
 	f, err := os.Open(path)
 	if err != nil {
-		return fmt.Errorf("logs: open %q for follow: %w", path, err)
+		return lib.WrapError(err, lib.ErrCodeSystem, fmt.Sprintf("logs: open %q for follow", path))
 	}
 	defer func() { _ = f.Close() }()
 
 	if _, err := f.Seek(0, io.SeekEnd); err != nil {
-		return fmt.Errorf("logs: seek to end of %q: %w", path, err)
+		return lib.WrapError(err, lib.ErrCodeSystem, fmt.Sprintf("logs: seek to end of %q", path))
 	}
 
 	reader := bufio.NewReader(f)
@@ -127,7 +131,7 @@ func followFile(ctx context.Context, w io.Writer, path string) error {
 			continue
 		}
 		if err != nil {
-			return fmt.Errorf("logs: read %q: %w", path, err)
+			return lib.WrapError(err, lib.ErrCodeSystem, fmt.Sprintf("logs: read %q", path))
 		}
 	}
 }
