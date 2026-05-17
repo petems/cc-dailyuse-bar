@@ -112,6 +112,14 @@ func cachedFailureError(cached error) error {
 	return lib.WrapError(errCCUsageUnavailable, lib.ErrCodeCCUsage, "serving cached ccusage failure state")
 }
 
+// newCCUsageUnavailableError wraps the bare sentinel with ErrCodeCCUsage so
+// callers using errors.As(*lib.AppError) see the structured type. The chain
+// preserves the sentinel, so errors.Is(err, errCCUsageUnavailable) still
+// matches.
+func newCCUsageUnavailableError() error {
+	return lib.WrapError(errCCUsageUnavailable, lib.ErrCodeCCUsage, "ccusage is not available")
+}
+
 // UpdateUsage forces a fresh query to ccusage, bypassing cache
 // Used for immediate updates when user requests refresh
 // Returns error if ccusage command fails or data is invalid
@@ -272,7 +280,7 @@ func (us *UsageService) performUpdateLocked(maxRetries int) (*models.UsageState,
 		}
 
 		if !us.IsAvailable() {
-			lastErr = errCCUsageUnavailable
+			lastErr = newCCUsageUnavailableError()
 			us.logger.Warn("ccusage not available", map[string]interface{}{
 				"attempt": attempt,
 				"path":    us.ccusagePath,
@@ -283,9 +291,6 @@ func (us *UsageService) performUpdateLocked(maxRetries int) (*models.UsageState,
 				continue
 			}
 
-			if lastErr == nil {
-				lastErr = errCCUsageUnavailable
-			}
 			us.recordFailureLocked(lastErr)
 			return us.getStateCopyLocked(), lastErr
 		}
@@ -369,7 +374,7 @@ func (us *UsageService) performUpdateLocked(maxRetries int) (*models.UsageState,
 	}
 
 	if lastErr == nil {
-		lastErr = errCCUsageUnavailable
+		lastErr = newCCUsageUnavailableError()
 	}
 	us.recordFailureLocked(lastErr)
 	return us.getStateCopyLocked(), lastErr

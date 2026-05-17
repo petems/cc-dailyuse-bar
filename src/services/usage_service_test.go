@@ -2,6 +2,7 @@ package services
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"cc-dailyuse-bar/src/lib"
 	"cc-dailyuse-bar/src/models"
 )
 
@@ -209,6 +211,17 @@ func TestUsageService_UpdateUsage_NotAvailable(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "not available")
 	assert.False(t, state.IsAvailable)
+
+	// The unavailability path must surface a structured AppError with
+	// ErrCodeCCUsage so callers can branch on type, not just string content.
+	var appErr *lib.AppError
+	require.ErrorAs(t, err, &appErr, "unavailable error must be a *lib.AppError")
+	assert.Equal(t, lib.ErrCodeCCUsage, appErr.Code)
+
+	// The sentinel must still be reachable through Unwrap so existing
+	// errors.Is(err, errCCUsageUnavailable) matchers keep working.
+	assert.True(t, errors.Is(err, errCCUsageUnavailable),
+		"wrapped error must preserve the sentinel in its chain")
 }
 
 func TestUsageService_GetDailyUsage_Cache(t *testing.T) {
