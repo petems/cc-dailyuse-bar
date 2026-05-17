@@ -3,7 +3,6 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"runtime"
 
 	"github.com/spf13/cobra"
@@ -33,10 +32,14 @@ var doctorCmd = &cobra.Command{
 		}
 		fmt.Fprintf(cmd.OutOrStdout(), "Config: Valid (loaded from %s)\n", svc.GetConfigPath())
 
-		// 2. Binary Check
-		path, err := exec.LookPath(config.CCUsagePath)
+		// 2. Binary Check — uses the same resolver the running tray uses
+		// (PATH lookup, with macOS Homebrew fallback for bare names) so
+		// `doctor` matches runtime behaviour. Without this, the tray could
+		// fail when launched from /Applications under launchd's stripped
+		// PATH while doctor (run from a shell) reports everything fine.
+		path, fallback, err := services.ResolveCCUsagePath(config.CCUsagePath)
 		if err != nil {
-			return fmt.Errorf("binary: 'ccusage' not found at %q; install ccusage or update 'ccusage_path' in config", config.CCUsagePath)
+			return fmt.Errorf("binary: 'ccusage' not found at %q; install ccusage or set 'ccusage_path' to an absolute path in config: %w", config.CCUsagePath, err)
 		}
 
 		// On non-Windows, verify the file is executable via permission bits.
@@ -52,6 +55,14 @@ var doctorCmd = &cobra.Command{
 			}
 		}
 		fmt.Fprintf(cmd.OutOrStdout(), "Binary: Found at '%s'\n", path)
+		if fallback {
+			fmt.Fprintf(cmd.OutOrStdout(),
+				"Binary: WARNING — resolved via Homebrew fallback because %q is not on PATH.\n"+
+					"        macOS .app bundles launched from /Applications run with a minimal PATH\n"+
+					"        (no /opt/homebrew/bin), so set 'ccusage_path: %s' in config to be safe.\n",
+				config.CCUsagePath, path)
+			hasWarnings = true
+		}
 
 		// 3. Connectivity Check (One-shot poll)
 		fmt.Fprintf(cmd.OutOrStdout(), "Connectivity: Testing API connection (timeout: %ds)...\n", config.CmdTimeout)
