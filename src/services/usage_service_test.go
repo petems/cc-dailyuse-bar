@@ -2,6 +2,7 @@ package services
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"cc-dailyuse-bar/src/lib"
 	"cc-dailyuse-bar/src/models"
 )
 
@@ -209,6 +211,17 @@ func TestUsageService_UpdateUsage_NotAvailable(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "not available")
 	assert.False(t, state.IsAvailable)
+
+	// The unavailability path must surface a structured AppError with
+	// ErrCodeCCUsage so callers can branch on type, not just string content.
+	var appErr *lib.AppError
+	require.ErrorAs(t, err, &appErr, "unavailable error must be a *lib.AppError")
+	assert.Equal(t, lib.ErrCodeCCUsage, appErr.Code)
+
+	// The sentinel must still be reachable through Unwrap so existing
+	// errors.Is(err, errCCUsageUnavailable) matchers keep working.
+	assert.True(t, errors.Is(err, errCCUsageUnavailable),
+		"wrapped error must preserve the sentinel in its chain")
 }
 
 func TestUsageService_GetDailyUsage_Cache(t *testing.T) {
@@ -246,6 +259,66 @@ func TestUsageService_GetDailyUsage_CacheExpired(t *testing.T) {
 		assert.Error(t, err)
 		assert.False(t, state.IsAvailable)
 	}
+}
+
+// TestUsageService_GetDailyUsage_FailureStateThrottled is the regression test
+// for the throttle this PR introduced. When the cached state is a failure
+// (IsAvailable=false) and lastQuery is fresh, GetDailyUsage must serve the
+// cached failure (with an error) instead of re-running ccusage. Otherwise
+// every caller hits ccusage during an outage, defeating the throttle.
+func TestUsageService_GetDailyUsage_FailureStateThrottled(t *testing.T) {
+	service := newTestUsageService()
+
+	// Point ccusage at a path that would make every fresh call fail loudly,
+	// so if the cache is bypassed we'd see lastQuery move forward.
+	service.ccusagePath = "/non/existent/cc-shim"
+
+	// Seed a fresh cached failure state.
+	pinned := time.Now()
+	service.state.IsAvailable = false
+	service.state.Status = models.Unknown
+	service.state.DailyCount = 0
+	service.state.DailyCost = 0
+	service.lastQuery = pinned
+
+	state, err := service.GetDailyUsage()
+
+	require.Error(t, err, "cached failure should surface an error to callers")
+	assert.False(t, state.IsAvailable)
+	assert.Equal(t, models.Unknown, state.Status)
+	assert.Equal(t, pinned.UnixNano(), service.lastQuery.UnixNano(),
+		"lastQuery must not be touched: a fresh ccusage call would have updated it")
+}
+
+// TestUsageService_GetDailyUsage_FailureCausePreserved verifies that the
+// cached failure path surfaces the real wrapped cause (parse error, command
+// exit, etc.) rather than collapsing every failure into a generic
+// "unavailable" error. Without this, callers and logs lose the root cause
+// for the duration of the throttle window.
+func TestUsageService_GetDailyUsage_FailureCausePreserved(t *testing.T) {
+	service := newTestUsageService()
+
+	tempDir := t.TempDir()
+	scriptPath := filepath.Join(tempDir, "invalid-json-ccusage")
+	require.NoError(t, os.WriteFile(scriptPath, []byte("#!/bin/bash\necho 'not valid json'"), 0o755))
+	service.ccusagePath = scriptPath
+
+	// Drive a real failure through performUpdateLocked so lastErr is populated
+	// with the wrapped parse error.
+	_, firstErr := service.updateWithRetry(1)
+	require.Error(t, firstErr)
+	require.Contains(t, firstErr.Error(), "failed to parse ccusage JSON output")
+
+	// Now hit the cache and confirm the same wrapped cause comes back, not
+	// the synthesized "serving cached ccusage failure state" message.
+	state, cachedErr := service.GetDailyUsage()
+	require.Error(t, cachedErr)
+	assert.False(t, state.IsAvailable)
+	assert.Equal(t, models.Unknown, state.Status)
+	assert.Contains(t, cachedErr.Error(), "failed to parse ccusage JSON output",
+		"cached error must preserve the original cause")
+	assert.NotContains(t, cachedErr.Error(), "serving cached ccusage failure state",
+		"cached error must not collapse to the generic unavailable message")
 }
 
 func TestUsageService_StartPolling_InvalidInterval(t *testing.T) {
@@ -360,6 +433,65 @@ exit 1`
 
 	assert.Error(t, err)
 	assert.False(t, state.IsAvailable)
+}
+
+// TestUsageService_CommandFailureSetsUnknownState pins down the contract that
+// when ccusage exits non-zero, the cached state is fully rewritten to the
+// Unknown sentinel (not left with stale tokens/cost) and lastQuery is bumped
+// so subsequent GetDailyUsage calls within the cache window see the failure.
+func TestUsageService_CommandFailureSetsUnknownState(t *testing.T) {
+	service := newTestUsageService()
+
+	// Seed the service with stale "successful" state so we can prove the
+	// failure path zeroes it out rather than preserving it.
+	service.state.DailyCount = 999
+	service.state.DailyCost = 99.0
+	service.state.Status = models.Red
+	service.state.IsAvailable = true
+
+	tempDir := t.TempDir()
+	scriptPath := filepath.Join(tempDir, "failing-ccusage")
+	require.NoError(t, os.WriteFile(scriptPath, []byte("#!/bin/bash\nexit 1"), 0o755))
+	service.ccusagePath = scriptPath
+
+	before := time.Now()
+	state, err := service.updateWithRetry(1)
+	require.Error(t, err)
+
+	assert.False(t, state.IsAvailable)
+	assert.Equal(t, models.Unknown, state.Status)
+	assert.Equal(t, 0, state.DailyCount)
+	assert.Equal(t, 0.0, state.DailyCost)
+	assert.False(t, service.lastQuery.Before(before),
+		"lastQuery should be bumped after command failure to throttle retries")
+}
+
+// TestUsageService_NoDataForTodayNotOverwritten guards against the regression
+// where the post-failure setUnknownStateLocked could clobber the no-data-for-
+// today path. The two branches are mutually exclusive — a successful command
+// with no entry for today must still leave the state Green/IsAvailable=true.
+func TestUsageService_NoDataForTodayNotOverwritten(t *testing.T) {
+	service := newTestUsageService()
+
+	tempDir := t.TempDir()
+	scriptPath := filepath.Join(tempDir, "no-today-ccusage")
+	yesterday := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
+	resp := CCUsageResponse{Daily: []CCUsageOutput{{Date: yesterday, TotalTokens: 5, TotalCost: 0.5}}}
+	resp.Totals.TotalTokens = 5
+	resp.Totals.TotalCost = 0.5
+	jsonData, err := json.Marshal(resp)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(scriptPath,
+		[]byte("#!/bin/bash\necho '"+string(jsonData)+"'"), 0o755))
+	service.ccusagePath = scriptPath
+
+	state, err := service.updateWithRetry(1)
+	require.Error(t, err) // signals "no data for today"
+
+	assert.True(t, state.IsAvailable)
+	assert.Equal(t, models.Green, state.Status)
+	assert.Equal(t, 0, state.DailyCount)
+	assert.Equal(t, 0.0, state.DailyCost)
 }
 
 func TestUsageService_UpdateWithRetry_InvalidJSON(t *testing.T) {

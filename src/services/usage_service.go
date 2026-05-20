@@ -21,6 +21,7 @@ var errCCUsageUnavailable = errors.New("ccusage is not available")
 type UsageService struct {
 	lastQuery       time.Time
 	state           *models.UsageState
+	lastErr         error // wrapped error for cached failure state; nil after a successful refresh
 	logger          *lib.Logger
 	ticker          *time.Ticker
 	pollStopChan    chan struct{}
@@ -66,16 +67,23 @@ type CCUsageResponse struct {
 	} `json:"totals"`
 }
 
-// GetDailyUsage queries ccusage and returns current daily statistics
-// Returns cached data if last query was within cache window
-// Returns error if ccusage is unavailable or returns invalid data
+// GetDailyUsage queries ccusage and returns current daily statistics. Returns
+// cached data if the last query was within the cache window, including cached
+// failure states so a sustained ccusage outage doesn't spawn one invocation
+// per call. Cached failures are returned with the original wrapped error
+// (parse error / command exit / missing binary / zero values) so callers and
+// logs keep the real root cause for the duration of the throttle window.
 func (us *UsageService) GetDailyUsage() (*models.UsageState, error) {
 	us.mutex.RLock()
-	if time.Since(us.lastQuery) < us.cacheWindow && us.state.IsAvailable {
-		// Copy the cached state while still holding the read lock to avoid
-		// check-then-act races with concurrent writers.
+	if time.Since(us.lastQuery) < us.cacheWindow {
+		// Copy the cached state and error while still holding the read lock
+		// to avoid check-then-act races with concurrent writers.
 		stateCopy := *us.state
+		cachedErr := us.lastErr
 		us.mutex.RUnlock()
+		if !stateCopy.IsAvailable {
+			return &stateCopy, cachedFailureError(cachedErr)
+		}
 		return &stateCopy, nil
 	}
 	us.mutex.RUnlock()
@@ -83,11 +91,33 @@ func (us *UsageService) GetDailyUsage() (*models.UsageState, error) {
 	us.mutex.Lock()
 	defer us.mutex.Unlock()
 
-	if time.Since(us.lastQuery) < us.cacheWindow && us.state.IsAvailable {
-		return us.getStateCopyLocked(), nil
+	if time.Since(us.lastQuery) < us.cacheWindow {
+		state := us.getStateCopyLocked()
+		if !state.IsAvailable {
+			return state, cachedFailureError(us.lastErr)
+		}
+		return state, nil
 	}
 
 	return us.performUpdateLocked(1)
+}
+
+// cachedFailureError returns the stored wrapped failure error, falling back
+// to a generic unavailable error only when the cache predates a recorded
+// cause (e.g. a manually-seeded failure state).
+func cachedFailureError(cached error) error {
+	if cached != nil {
+		return cached
+	}
+	return lib.WrapError(errCCUsageUnavailable, lib.ErrCodeCCUsage, "serving cached ccusage failure state")
+}
+
+// newCCUsageUnavailableError wraps the bare sentinel with ErrCodeCCUsage so
+// callers using errors.As(*lib.AppError) see the structured type. The chain
+// preserves the sentinel, so errors.Is(err, errCCUsageUnavailable) still
+// matches.
+func newCCUsageUnavailableError() error {
+	return lib.WrapError(errCCUsageUnavailable, lib.ErrCodeCCUsage, "ccusage is not available")
 }
 
 // UpdateUsage forces a fresh query to ccusage, bypassing cache
@@ -116,6 +146,14 @@ func (us *UsageService) setUnknownStateLocked() {
 	us.state.Status = models.Unknown
 }
 
+// recordFailureLocked transitions the cached state to Unknown and stores the
+// wrapped cause so subsequent cached reads can surface the real error
+// instead of a synthesized "unavailable" message.
+func (us *UsageService) recordFailureLocked(err error) {
+	us.setUnknownStateLocked()
+	us.lastErr = err
+}
+
 // setNoDataForToday sets state for when ccusage works but has no data for today
 func (us *UsageService) setNoDataForToday() {
 	us.mutex.Lock()
@@ -126,6 +164,7 @@ func (us *UsageService) setNoDataForToday() {
 func (us *UsageService) setNoDataForTodayLocked() {
 	us.setStateMetricsLocked(0, 0, true)
 	us.updateStatusLocked() // $0.00 cost should evaluate to Green
+	us.lastErr = nil        // success state — clear any prior cached failure
 }
 
 func (us *UsageService) setStateMetricsLocked(tokens int, cost float64, available bool) {
@@ -241,7 +280,7 @@ func (us *UsageService) performUpdateLocked(maxRetries int) (*models.UsageState,
 		}
 
 		if !us.IsAvailable() {
-			lastErr = errCCUsageUnavailable
+			lastErr = newCCUsageUnavailableError()
 			us.logger.Warn("ccusage not available", map[string]interface{}{
 				"attempt": attempt,
 				"path":    us.ccusagePath,
@@ -252,10 +291,7 @@ func (us *UsageService) performUpdateLocked(maxRetries int) (*models.UsageState,
 				continue
 			}
 
-			if lastErr == nil {
-				lastErr = errCCUsageUnavailable
-			}
-			us.setUnknownStateLocked()
+			us.recordFailureLocked(lastErr)
 			return us.getStateCopyLocked(), lastErr
 		}
 
@@ -284,6 +320,7 @@ func (us *UsageService) performUpdateLocked(maxRetries int) (*models.UsageState,
 			if lastErr == nil {
 				lastErr = err
 			}
+			us.recordFailureLocked(lastErr)
 			return us.getStateCopyLocked(), lastErr
 		}
 
@@ -294,8 +331,9 @@ func (us *UsageService) performUpdateLocked(maxRetries int) (*models.UsageState,
 				"out_len": len(output),
 				"output":  truncateOutput(output),
 			})
-			us.setUnknownStateLocked()
-			return us.getStateCopyLocked(), lib.WrapError(err, lib.ErrCodeCCUsage, "failed to parse ccusage JSON output")
+			wrapped := lib.WrapError(err, lib.ErrCodeCCUsage, "failed to parse ccusage JSON output")
+			us.recordFailureLocked(wrapped)
+			return us.getStateCopyLocked(), wrapped
 		}
 
 		today := time.Now().Format("2006-01-02")
@@ -315,8 +353,9 @@ func (us *UsageService) performUpdateLocked(maxRetries int) (*models.UsageState,
 				"totalCost":   ccusageOutput.TotalCost,
 				"date":        ccusageOutput.Date,
 			})
-			us.setUnknownStateLocked()
-			return us.getStateCopyLocked(), lib.WrapError(errors.New("ccusage returned zero values"), lib.ErrCodeCCUsage, "ccusage returned invalid zero values")
+			wrapped := lib.WrapError(errors.New("ccusage returned zero values"), lib.ErrCodeCCUsage, "ccusage returned invalid zero values")
+			us.recordFailureLocked(wrapped)
+			return us.getStateCopyLocked(), wrapped
 		}
 
 		us.applyUsageDataLocked(ccusageOutput)
@@ -335,9 +374,9 @@ func (us *UsageService) performUpdateLocked(maxRetries int) (*models.UsageState,
 	}
 
 	if lastErr == nil {
-		lastErr = errCCUsageUnavailable
+		lastErr = newCCUsageUnavailableError()
 	}
-	us.setUnknownStateLocked()
+	us.recordFailureLocked(lastErr)
 	return us.getStateCopyLocked(), lastErr
 }
 
@@ -401,6 +440,7 @@ func availableDates(daily []CCUsageOutput) []string {
 func (us *UsageService) applyUsageDataLocked(output CCUsageOutput) {
 	us.setStateMetricsLocked(output.TotalTokens, output.TotalCost, true)
 	us.updateStatusLocked()
+	us.lastErr = nil // success — clear any prior cached failure
 }
 
 func (us *UsageService) updateStatusLocked() {
