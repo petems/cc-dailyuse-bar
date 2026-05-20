@@ -33,6 +33,7 @@ func startTrayApp(cmd *cobra.Command, config *models.Config) error {
 			"signal": sig.String(),
 		})
 		usageService.StopPolling()
+		usageService.StopDailyResetMonitor()
 		systray.Quit()
 	}()
 

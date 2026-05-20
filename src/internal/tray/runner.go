@@ -205,5 +205,6 @@ func (tr *Runner) onExit() {
 	// Ensure background goroutines stop cleanly
 	if tr.usageService != nil {
 		tr.usageService.StopPolling()
+		tr.usageService.StopDailyResetMonitor()
 	}
 }

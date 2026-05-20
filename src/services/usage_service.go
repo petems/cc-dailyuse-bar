@@ -479,54 +479,80 @@ func (us *UsageService) StartPolling(intervalSeconds int, callback func(*models.
 		return lib.ValidationError("polling interval must be positive")
 	}
 
-	us.StopPolling()
-
-	// Create ticker and assign callback atomically with mutex protection
-	us.mutex.Lock()
-	us.updateCallback = callback
-	us.ticker = time.NewTicker(time.Duration(intervalSeconds) * time.Second)
-	us.mutex.Unlock()
-
-	us.logger.Info("Starting usage polling", map[string]interface{}{
-		"intervalSeconds": intervalSeconds,
-	})
-
-	go us.pollingLoop()
-
-	return nil
-}
-
-// StopPolling stops the polling timer
-func (us *UsageService) StopPolling() {
-	select {
-	case us.pollStopChan <- struct{}{}:
-	default:
-	}
-	select {
-	case us.resetStopChan <- struct{}{}:
-	default:
-	}
-
+	// Fold previous-stop, ticker creation, and goroutine launch into one
+	// locked section so a concurrent StopPolling cannot slip between them and
+	// close the stop channel that the new pollingLoop is about to capture.
 	us.mutex.Lock()
 	if us.ticker != nil {
 		us.ticker.Stop()
 		us.ticker = nil
 	}
+	oldStopChan := us.replaceStopChan(&us.pollStopChan)
+	ticker := time.NewTicker(time.Duration(intervalSeconds) * time.Second)
+	us.updateCallback = callback
+	us.ticker = ticker
+	go us.pollingLoop(ticker, us.pollStopChan)
 	us.mutex.Unlock()
+
+	if oldStopChan != nil {
+		close(oldStopChan)
+	}
+
+	us.logger.Info("Starting usage polling", map[string]interface{}{
+		"intervalSeconds": intervalSeconds,
+	})
+
+	return nil
+}
+
+// StopPolling stops the polling timer. It does NOT stop the daily reset
+// monitor — call StopDailyResetMonitor for that. Splitting them lets callers
+// restart polling (StartPolling internally calls StopPolling) without tearing
+// down a running midnight monitor.
+func (us *UsageService) StopPolling() {
+	us.mutex.Lock()
+	if us.ticker != nil {
+		us.ticker.Stop()
+		us.ticker = nil
+	}
+	pollStopChan := us.replaceStopChan(&us.pollStopChan)
+	us.mutex.Unlock()
+
+	if pollStopChan != nil {
+		close(pollStopChan)
+	}
 
 	us.logger.Info("Usage polling stopped")
 }
 
+// StopDailyResetMonitor stops the midnight detection goroutine started by
+// StartDailyResetMonitor. Idempotent.
+func (us *UsageService) StopDailyResetMonitor() {
+	us.mutex.Lock()
+	resetStopChan := us.replaceStopChan(&us.resetStopChan)
+	us.mutex.Unlock()
+
+	if resetStopChan != nil {
+		close(resetStopChan)
+	}
+
+	us.logger.Info("Daily reset monitor stopped")
+}
+
+func (us *UsageService) replaceStopChan(chPtr *chan struct{}) chan struct{} {
+	oldChan := *chPtr
+	if oldChan != nil {
+		*chPtr = make(chan struct{})
+	}
+	return oldChan
+}
+
 // pollingLoop runs the polling loop in a goroutine
-func (us *UsageService) pollingLoop() {
-	us.mutex.RLock()
-	if us.ticker == nil {
-		us.mutex.RUnlock()
+func (us *UsageService) pollingLoop(ticker *time.Ticker, stopChan <-chan struct{}) {
+	if ticker == nil {
 		us.logger.Error("Polling loop started without ticker")
 		return
 	}
-	ticker := us.ticker
-	us.mutex.RUnlock()
 
 	for {
 		select {
@@ -547,7 +573,7 @@ func (us *UsageService) pollingLoop() {
 				callback(state)
 			}
 
-		case <-us.pollStopChan:
+		case <-stopChan:
 			us.logger.Debug("Polling loop stopped")
 			return
 		}
@@ -557,12 +583,23 @@ func (us *UsageService) pollingLoop() {
 // StartDailyResetMonitor starts the daily reset scheduler with midnight
 // detection (T031).
 func (us *UsageService) StartDailyResetMonitor() {
-	go us.dailyResetLoop()
+	// Fold previous-stop and goroutine launch into one locked section so a
+	// concurrent StopDailyResetMonitor cannot slip between them and close the
+	// stop channel the new dailyResetLoop just captured. Mirrors StartPolling.
+	us.mutex.Lock()
+	oldStopChan := us.replaceStopChan(&us.resetStopChan)
+	go us.dailyResetLoop(us.resetStopChan)
+	us.mutex.Unlock()
+
+	if oldStopChan != nil {
+		close(oldStopChan)
+	}
+
 	us.logger.Info("Daily reset monitor started")
 }
 
 // dailyResetLoop monitors for midnight and resets daily counters
-func (us *UsageService) dailyResetLoop() {
+func (us *UsageService) dailyResetLoop(stopChan <-chan struct{}) {
 	lastResetDay := time.Now().Day()
 	resetChecker := time.NewTicker(1 * time.Minute)
 	defer resetChecker.Stop()
@@ -594,7 +631,7 @@ func (us *UsageService) dailyResetLoop() {
 				lastResetDay = now.Day()
 			}
 
-		case <-us.resetStopChan:
+		case <-stopChan:
 			us.logger.Debug("Daily reset loop stopped")
 			return
 		}
