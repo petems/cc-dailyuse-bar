@@ -583,13 +583,17 @@ func (us *UsageService) pollingLoop(ticker *time.Ticker, stopChan <-chan struct{
 // StartDailyResetMonitor starts the daily reset scheduler with midnight
 // detection (T031).
 func (us *UsageService) StartDailyResetMonitor() {
-	us.StopDailyResetMonitor()
-
-	// Launch under the read lock so StopDailyResetMonitor cannot replace/close
-	// the captured stop channel between the read and the goroutine start.
-	us.mutex.RLock()
+	// Fold previous-stop and goroutine launch into one locked section so a
+	// concurrent StopDailyResetMonitor cannot slip between them and close the
+	// stop channel the new dailyResetLoop just captured. Mirrors StartPolling.
+	us.mutex.Lock()
+	oldStopChan := us.replaceStopChan(&us.resetStopChan)
 	go us.dailyResetLoop(us.resetStopChan)
-	us.mutex.RUnlock()
+	us.mutex.Unlock()
+
+	if oldStopChan != nil {
+		close(oldStopChan)
+	}
 
 	us.logger.Info("Daily reset monitor started")
 }
