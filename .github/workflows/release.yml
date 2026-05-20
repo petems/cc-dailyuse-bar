@@ -85,14 +85,14 @@ jobs:
       # before any artifacts are released.
       - name: GoReleaser — build only (tag)
         if: env.IS_TAG == 'true'
-        uses: goreleaser/goreleaser-action@1a80836c5c9d9e5755a25cb59ec6f45a3b5f41a8 # v7
+        uses: goreleaser/goreleaser-action@5daf1e915a5f0af01ddbcd89a43b8061ff4f1a89 # v7
         with:
           version: ${{ env.GORELEASER_VERSION }}
           args: release --clean --skip=archive,publish
 
       - name: GoReleaser — build only (dispatch / snapshot)
         if: env.IS_TAG != 'true'
-        uses: goreleaser/goreleaser-action@1a80836c5c9d9e5755a25cb59ec6f45a3b5f41a8 # v7
+        uses: goreleaser/goreleaser-action@5daf1e915a5f0af01ddbcd89a43b8061ff4f1a89 # v7
         with:
           version: ${{ env.GORELEASER_VERSION }}
           args: release --clean --skip=archive,publish --snapshot
@@ -175,7 +175,7 @@ jobs:
       # extra_files. Only run on real tags.
       - name: GoReleaser — release
         if: env.IS_TAG == 'true'
-        uses: goreleaser/goreleaser-action@1a80836c5c9d9e5755a25cb59ec6f45a3b5f41a8 # v7
+        uses: goreleaser/goreleaser-action@5daf1e915a5f0af01ddbcd89a43b8061ff4f1a89 # v7
         with:
           version: ${{ env.GORELEASER_VERSION }}
           args: release --clean
