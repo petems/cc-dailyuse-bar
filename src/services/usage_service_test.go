@@ -412,6 +412,7 @@ func TestUsageService_StartDailyResetMonitor(t *testing.T) {
 
 	// Ensure clean state
 	service.StopPolling()
+	service.StopDailyResetMonitor()
 
 	// Set some data
 	service.state.DailyCount = 100
@@ -423,8 +424,10 @@ func TestUsageService_StartDailyResetMonitor(t *testing.T) {
 	// Wait a bit
 	time.Sleep(100 * time.Millisecond)
 
-	// Stop the service gracefully
+	// Stop the service gracefully — explicitly stop the reset monitor so it
+	// doesn't leak into later tests' goroutine baselines.
 	service.StopPolling()
+	service.StopDailyResetMonitor()
 }
 
 // TestUsageService_PollingRestart verifies that StartPolling -> StopPolling ->
